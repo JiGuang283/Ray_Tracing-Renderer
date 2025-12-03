@@ -1,3 +1,0 @@
-/home/ji_guang/Ray_Tracing/My_Ray_Tracing3/build/CMakeFiles/CGAssignment4.dir
-/home/ji_guang/Ray_Tracing/My_Ray_Tracing3/build/CMakeFiles/edit_cache.dir
-/home/ji_guang/Ray_Tracing/My_Ray_Tracing3/build/CMakeFiles/rebuild_cache.dir
