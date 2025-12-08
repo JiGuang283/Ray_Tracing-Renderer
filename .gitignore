@@ -2,6 +2,7 @@
 build/
 cmake-build-debug/
 out/
+docs/
 
 # 忽略 VS Code 配置（可选，建议忽略）
 .vscode/
