@@ -31,14 +31,6 @@ inline double random_double() {
     seed ^= seed << 5;
 
     return seed * 2.3283064365386963e-10;
-
-    // thread_local static std::mt19937 generator(
-    //     std::random_device{}() +
-    //     static_cast<unsigned>(
-    //         std::hash<std::thread::id>{}(std::this_thread::get_id())));
-    // thread_local static std::uniform_real_distribution<double> distribution(
-    //     0.0, 1.0);
-    // return distribution(generator);
 }
 
 inline double random_double(double min, double max) noexcept {

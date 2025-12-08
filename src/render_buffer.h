@@ -2,7 +2,6 @@
 #define RENDER_BUFFER_H
 
 #include "vec3.h"
-#include <mutex>
 #include <vector>
 
 class RenderBuffer {
