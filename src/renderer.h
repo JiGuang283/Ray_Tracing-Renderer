@@ -27,6 +27,8 @@ class Renderer {
                 const color &background, RenderBuffer &target_buffer) {
         m_is_rendering = true;
 
+        auto start_time = std::chrono::high_resolution_clock::now();
+
         int image_width = target_buffer.width();
         int image_height = target_buffer.height();
 
@@ -65,8 +67,12 @@ class Renderer {
             t.join();
         }
 
+        auto end_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end_time - start_time;
+
         m_is_rendering = false;
-        std::cout << "Rendering finished." << std::endl;
+        std::cout << "Rendering finished in " << elapsed.count() << " seconds."
+                  << std::endl;
     }
 
     void set_samples(int samples) {
