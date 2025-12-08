@@ -16,13 +16,13 @@ class vec3 {
     vec3(double e0, double e1, double e2) : e{e0, e1, e2} {
     }
 
-    double x() const {
+    double x() const noexcept {
         return e[0];
     }
-    double y() const {
+    double y() const noexcept {
         return e[1];
     }
-    double z() const {
+    double z() const noexcept {
         return e[2];
     }
 
@@ -58,7 +58,7 @@ class vec3 {
         return sqrt(length_squared());
     }
 
-    double length_squared() const {
+    double length_squared() const noexcept {
         return e[0] * e[0] + e[1] * e[1] + e[2] * e[2];
     }
 
@@ -71,7 +71,7 @@ class vec3 {
                     random_double(min, max));
     }
 
-    bool near_zero() const {
+    bool near_zero() const noexcept {
         return (fabs(e[0]) < kNearZeroThreshold) &&
                (fabs(e[1]) < kNearZeroThreshold) &&
                (fabs(e[2]) < kNearZeroThreshold);
