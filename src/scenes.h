@@ -2,6 +2,7 @@
 #define SCENES_H
 
 #include "hittable.h"
+#include "point_light.h"
 #include "vec3.h"
 #include <memory>
 
@@ -9,6 +10,7 @@ using std::shared_ptr;
 
 struct SceneConfig {
     shared_ptr<hittable> world;
+    std::vector<shared_ptr<Light>> lights;
     color background{0, 0, 0};
     point3 lookfrom{13, 2, 3};
     point3 lookat{0, 0, 0};
