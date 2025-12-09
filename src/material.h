@@ -35,6 +35,7 @@ class material {
         return false;
     }
 
+    // 保留旧接口
     virtual bool scatter(const ray &r_in, const hit_record &rec,
                          color &attenuation, ray &scattered) const {
         return false;
