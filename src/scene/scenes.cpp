@@ -285,6 +285,36 @@ shared_ptr<hittable> final_scene() {
     return make_shared<bvh_node>(objects, 0, 1);
 }
 
+shared_ptr<hittable> pbr_test_scene() {
+    hittable_list world;
+
+    auto checker = make_shared<checker_texture>(color(0.2, 0.3, 0.1), color(0.9, 0.9, 0.9));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, make_shared<lambertian>(checker)));
+
+    // Left: Gold (Metallic)
+    auto gold_albedo = make_shared<solid_color>(0.8, 0.6, 0.2);
+    auto gold_rough = make_shared<solid_color>(0.1, 0.1, 0.1);
+    auto gold_metal = make_shared<solid_color>(1.0, 1.0, 1.0);
+    auto gold_mat = make_shared<PBRMaterial>(gold_albedo, gold_rough, gold_metal);
+    world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, gold_mat));
+
+    // Middle: Silver/Textured (Metallic with Noise)
+    auto noise = make_shared<noise_texture>(4.0);
+    auto silver_rough = make_shared<solid_color>(0.2, 0.2, 0.2);
+    auto silver_metal = make_shared<solid_color>(1.0, 1.0, 1.0);
+    auto mid_mat = make_shared<PBRMaterial>(noise, silver_rough, silver_metal);
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, mid_mat));
+
+    // Right: Blue Plastic (Dielectric-like PBR)
+    auto blue_albedo = make_shared<solid_color>(0.1, 0.2, 0.5);
+    auto blue_rough = make_shared<solid_color>(0.05, 0.05, 0.05);
+    auto blue_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+    auto blue_mat = make_shared<PBRMaterial>(blue_albedo, blue_rough, blue_metal);
+    world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, blue_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 SceneConfig select_scene(int scene_id) {
     SceneConfig config;
 
@@ -366,6 +396,17 @@ SceneConfig select_scene(int scene_id) {
         config.lookfrom = point3(478, 278, -600);
         config.lookat = point3(278, 278, 0);
         config.vfov = 40.0;
+        break;
+
+    case 11:
+        config.world = pbr_test_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 100;
+        config.background = color(0.70, 0.80, 1.00);
+        config.lookfrom = point3(13, 2, 3);
+        config.lookat = point3(0, 0, 0);
+        config.vfov = 20.0;
         break;
 
     case 10:

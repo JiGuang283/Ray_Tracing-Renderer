@@ -31,15 +31,28 @@ class PathIntegrator : public Integrator {
             return background;
         }
 
-        ray scattered;
-        color attenuation;
-        color emitted = rec.mat_ptr->emitted(rec.u, rec.v, rec.p);
+        vec3 wo = unit_vector(-r.direction());
+        color emitted = rec.mat_ptr->emitted(rec, wo);
 
-        if (!rec.mat_ptr->scatter(r, rec, attenuation, scattered)) {
+        BSDFSample sampled;
+        if (!rec.mat_ptr->sample(rec, wo, sampled)) {
             return emitted;
         }
 
-        return emitted + attenuation * Li_internal(scattered, scene, background,
+        ray scattered(rec.p, sampled.wi, r.time());
+        color throughput = sampled.f;
+
+        if (!sampled.is_specular) {
+            double cos_theta = dot(rec.normal, sampled.wi);
+            if (cos_theta < 0) cos_theta = 0;
+            if (sampled.pdf > 1e-6) {
+                throughput = throughput * cos_theta / sampled.pdf;
+            } else {
+                throughput = color(0, 0, 0);
+            }
+        }
+
+        return emitted + throughput * Li_internal(scattered, scene, background,
                                                    depth - 1);
     }
     int m_max_depth;
