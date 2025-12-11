@@ -1,30 +1,16 @@
 #include "Application.h"
 
-#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <deque>
 #include <mutex>
-
 #include "image_ops.h"
 
 #include "camera.h"
 #include "imgui.h"
 #include "scenes.h"
-
-// Helper for ACES Tone Mapping
-inline vec3 ACESFilm(vec3 x) {
-    float a = 2.51f;
-    float b = 0.03f;
-    float c = 2.43f;
-    float d = 0.59f;
-    float e = 0.14f;
-    // Clamp to avoid negative values before processing
-    x = vec3(std::max(0.0, x.x()), std::max(0.0, x.y()), std::max(0.0, x.z()));
-    return (x*(x*a+b))/(x*(x*c+d)+e);
-}
 
 namespace RenderConfig {
     constexpr int kMaxDepth = 50;
@@ -69,15 +55,33 @@ bool Application::init() {
 }
 
 void Application::run() {
+    double last_texture_update_time = 0.0;
+    const double texture_update_interval = 1.0 / 30.0;
+
     while (!win_app_->shouldWindowClose()) { // Render loop
         win_app_->processEvent();
 
         if (ui_.restart_render && !ui_.is_rendering && !ui_.is_paused) {
             start_render(false);
             ui_.restart_render = false;
+            ui_.need_display_update = true;
         }
 
-        update_display_from_buffer(); // Update texture
+        // 获取当前时间
+        double current_time = ImGui::GetTime();
+
+        // 只有当 "正在渲染且达到更新间隔" 或者 "强制需要更新" 时，才执行繁重的纹理更新
+        if ((ui_.is_rendering && (current_time - last_texture_update_time >= texture_update_interval)) || ui_.need_display_update) {
+            update_display_from_buffer();
+            last_texture_update_time = current_time;
+
+            // 如果不是在渲染中（即处于暂停或完成状态），说明这是一次性更新（如调整Gamma），
+            // 更新完后重置标记，下一帧就不再执行此函数，直到再次触发。
+            if (!ui_.is_rendering) {
+                ui_.need_display_update = false;
+            }
+        }
+
 
         win_app_->beginRender();
         render_ui();
@@ -98,6 +102,9 @@ void Application::stop_render() {
     }
     ui_.is_rendering = false;
     ui_.is_paused = false;
+
+    ui_.need_display_update = true;
+
     log("Render stopped by user.");
 }
 
@@ -109,6 +116,9 @@ void Application::pause_render() {
         }
         ui_.is_rendering = false;
         ui_.is_paused = true;
+
+        ui_.need_display_update = true;
+
         log("Render paused.");
     }
 }
@@ -198,21 +208,42 @@ void Application::update_display_from_buffer() {
     const auto &pixels = render_buffer_->get_data();
     float inv_gamma = 1.0f / ui_.gamma;
 
-    #pragma omp parallel for
+    // 预计算 Gamma LUT（0..1 区间映射到 0..255），256 档足够 LDR 显示
+    static thread_local std::array<unsigned char, 256> gamma_lut;
+    static thread_local float last_inv_gamma = -1.0f;
+    if (std::fabs(last_inv_gamma - inv_gamma) > 1e-6f) {
+        for (int i = 0; i < 256; ++i) {
+            float v = i / 255.0f;
+            gamma_lut[i] = static_cast<unsigned char>(255.999f * std::pow(v, inv_gamma));
+        }
+        last_inv_gamma = inv_gamma;
+    }
+    auto tone_map = [&](vec3 c) {
+        switch (ui_.tone_mapping_type) {
+        case 1: // Reinhard
+            return c / (c + vec3(1.0, 1.0, 1.0));
+        case 2: // ACES
+            return ImageOps::ACESFilm(c);
+        default:
+            return c;
+        }
+    };
+
+    #pragma omp parallel for collapse(2)
     for (int j = 0; j < height_; ++j) {
         for (int i = 0; i < width_; ++i) {
-            auto c = pixels[height_ - 1 - j][i];
-            // Tone Mapping (HDR -> LDR)
-            if (ui_.tone_mapping_type == 1) { // Reinhard
-                c = c / (c + vec3(1.0, 1.0, 1.0));
-            } else if (ui_.tone_mapping_type == 2) { // ACES
-                c = ImageOps::ACESFilm(c);
-            }
+            vec3 c = pixels[height_ - 1 - j][i];
+            c = tone_map(c);
+
+            // clamp 到 [0,1]
+            float r = std::fmax(0.0f, std::fmin(1.0f, static_cast<float>(c.x())));
+            float g = std::fmax(0.0f, std::fmin(1.0f, static_cast<float>(c.y())));
+            float b = std::fmax(0.0f, std::fmin(1.0f, static_cast<float>(c.z())));
+
             int idx = (j * width_ + i) * 4;
-            // Gamma Correction
-            image_data_[idx + 0] = static_cast<unsigned char>(255.999 * pow(std::max(0.0, c.x()), inv_gamma));
-            image_data_[idx + 1] = static_cast<unsigned char>(255.999 * pow(std::max(0.0, c.y()), inv_gamma));
-            image_data_[idx + 2] = static_cast<unsigned char>(255.999 * pow(std::max(0.0, c.z()), inv_gamma));
+            image_data_[idx + 0] = gamma_lut[static_cast<int>(r * 255.0f + 0.5f)];
+            image_data_[idx + 1] = gamma_lut[static_cast<int>(g * 255.0f + 0.5f)];
+            image_data_[idx + 2] = gamma_lut[static_cast<int>(b * 255.0f + 0.5f)];
             image_data_[idx + 3] = 255;
         }
     }
@@ -370,13 +401,23 @@ void Application::render_ui() {
 
     // Tone Mapping Control
     const char* tm_types[] = { "None (Clamp)", "Reinhard", "ACES (Filmic)" };
-    ImGui::Combo("Tone Mapping", &ui_.tone_mapping_type, tm_types, IM_ARRAYSIZE(tm_types));
+    if (ImGui::Combo("Tone Mapping", &ui_.tone_mapping_type, tm_types, IM_ARRAYSIZE(tm_types))) {
+        ui_.need_display_update = true;
+    }
 
-    ImGui::SliderFloat("Gamma", &ui_.gamma, 0.1f, 5.0f);
-    ImGui::Checkbox("Enable Filters", &ui_.enable_post_process);
+    if (ImGui::SliderFloat("Gamma", &ui_.gamma, 0.1f, 5.0f)) {
+        ui_.need_display_update = true;
+    }
+
+    if (ImGui::Checkbox("Enable Filters", &ui_.enable_post_process)) {
+        ui_.need_display_update = true;
+    }
+
     if (ui_.enable_post_process) {
         const char* pp_types[] = { "Simple Denoise (Blur)", "Sharpen", "Grayscale", "Invert Colors", "Median (Despeckle)" };
-        ImGui::Combo("Filter Type", &ui_.post_process_type, pp_types, IM_ARRAYSIZE(pp_types));
+        if (ImGui::Combo("Filter Type", &ui_.post_process_type, pp_types, IM_ARRAYSIZE(pp_types))) {
+            ui_.need_display_update = true;
+        }
     }
 
     ImGui::Separator();

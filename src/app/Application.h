@@ -12,9 +12,11 @@
 #include "WindowsApp.h"
 #include "path_integrator.h"
 #include "pbr_path_integrator.h"
+#include "rr_path_integrator.h"
+#include "mis_path_integrator.h"
 #include "renderer.h"
 #include "render_buffer.h"
-#include "rr_path_integrator.h"
+
 
 // UI 状态
 struct UIState {
@@ -46,12 +48,15 @@ struct UIState {
     int tone_mapping_type = 0; // 0: None, 1: Reinhard, 2: ACES
     float gamma = 2.0f;
 
+    //指示显示是否需要更新
+    bool need_display_update = true;
+
     //积分器类型
-    int integrator_idx = 0; // 0: Path, 1: RR, 2: PBR
+    int integrator_idx = 0; // 0: Path, 1: RR, 2: PBR 3: MIS
     std::shared_ptr<Integrator> integrator = std::make_shared<PathIntegrator>();
     std::shared_ptr<Integrator> rrIntegrator = std::make_shared<RRPathInterator>();
     std::shared_ptr<Integrator> pbrIntegrator = std::make_shared<PBRPathIntegrator>();
-
+    std::shared_ptr<Integrator> misIntegrator = std::make_shared<MISPathIntegrator>();
 };
 
 class Application {

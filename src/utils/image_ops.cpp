@@ -8,6 +8,11 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+template <typename T>
+inline T clamp_compat(const T& v, const T& lo, const T& hi) {
+    return (v < lo) ? lo : (v > hi) ? hi : v;
+}
+
 namespace ImageOps {
 
     vec3 ACESFilm(vec3 x) {
@@ -69,25 +74,17 @@ namespace ImageOps {
             return (y * width + x) * 4;
         };
 
-        if (type == 0 || type == 1) { // Blur or Sharpen
+        if (type == 0 || type == 1) { // Blur 或 Sharpen
             std::vector<unsigned char> temp_data = image_data;
+            const int blur_kernel[3][3]   = { {1,1,1},{1,1,1},{1,1,1} };
+            const int sharp_kernel[3][3]  = { {0,-1,0},{-1,5,-1},{0,-1,0} };
+            const int (*kernel)[3] = (type == 0) ? blur_kernel : sharp_kernel;
+            const int weight_sum = (type == 0) ? 9 : 1;
 
-            #pragma omp parallel for
+            #pragma omp parallel for collapse(2)
             for (int y = 0; y < height; ++y) {
                 for (int x = 0; x < width; ++x) {
                     int r = 0, g = 0, b = 0;
-                    int weight_sum = 0;
-
-                    int kernel[3][3];
-                    if (type == 0) {
-                        for(int i=0;i<3;i++) for(int j=0;j<3;j++) kernel[i][j] = 1;
-                        weight_sum = 9;
-                    } else {
-                        int s_k[3][3] = {{0, -1, 0}, {-1, 5, -1}, {0, -1, 0}};
-                        for(int i=0;i<3;i++) for(int j=0;j<3;j++) kernel[i][j] = s_k[i][j];
-                        weight_sum = 1;
-                    }
-
                     for (int ky = -1; ky <= 1; ++ky) {
                         for (int kx = -1; kx <= 1; ++kx) {
                             int idx = get_idx(x + kx, y + ky);
@@ -97,11 +94,10 @@ namespace ImageOps {
                             b += temp_data[idx + 2] * w;
                         }
                     }
-
-                    int current_idx = (y * width + x) * 4;
-                    image_data[current_idx + 0] = static_cast<unsigned char>(std::max(0, std::min(255, r / weight_sum)));
-                    image_data[current_idx + 1] = static_cast<unsigned char>(std::max(0, std::min(255, g / weight_sum)));
-                    image_data[current_idx + 2] = static_cast<unsigned char>(std::max(0, std::min(255, b / weight_sum)));
+                    int cur = (y * width + x) * 4;
+                    image_data[cur + 0] = static_cast<unsigned char>(clamp_compat(r / weight_sum, 0, 255));
+                    image_data[cur + 1] = static_cast<unsigned char>(clamp_compat(g / weight_sum, 0, 255));
+                    image_data[cur + 2] = static_cast<unsigned char>(clamp_compat(b / weight_sum, 0, 255));
                 }
             }
         } else if (type == 2) { // Grayscale
@@ -109,43 +105,43 @@ namespace ImageOps {
             for (int i = 0; i < width * height; ++i) {
                 int idx = i * 4;
                 unsigned char gray = static_cast<unsigned char>(
-                    0.299 * image_data[idx] + 0.587 * image_data[idx + 1] + 0.114 * image_data[idx + 2]);
-                image_data[idx] = gray;
+                    0.299f * image_data[idx] + 0.587f * image_data[idx + 1] + 0.114f * image_data[idx + 2]);
+                image_data[idx + 0] = gray;
                 image_data[idx + 1] = gray;
                 image_data[idx + 2] = gray;
             }
         } else if (type == 3) { // Invert
-             #pragma omp parallel for
+            #pragma omp parallel for
             for (int i = 0; i < width * height; ++i) {
                 int idx = i * 4;
-                image_data[idx] = 255 - image_data[idx];
+                image_data[idx + 0] = 255 - image_data[idx + 0];
                 image_data[idx + 1] = 255 - image_data[idx + 1];
                 image_data[idx + 2] = 255 - image_data[idx + 2];
             }
-        } else if (type == 4) { // Median Filter
+        } else if (type == 4) { // Median
             std::vector<unsigned char> temp_data = image_data;
-            #pragma omp parallel for
+            #pragma omp parallel for collapse(2)
             for (int y = 0; y < height; ++y) {
                 for (int x = 0; x < width; ++x) {
-                    std::vector<unsigned char> rs, gs, bs;
-                    rs.reserve(9); gs.reserve(9); bs.reserve(9);
-
+                    unsigned char rs[9], gs[9], bs[9];
+                    int t = 0;
                     for (int ky = -1; ky <= 1; ++ky) {
                         for (int kx = -1; kx <= 1; ++kx) {
                             int idx = get_idx(x + kx, y + ky);
-                            rs.push_back(temp_data[idx + 0]);
-                            gs.push_back(temp_data[idx + 1]);
-                            bs.push_back(temp_data[idx + 2]);
+                            rs[t] = temp_data[idx + 0];
+                            gs[t] = temp_data[idx + 1];
+                            bs[t] = temp_data[idx + 2];
+                            ++t;
                         }
                     }
-                    std::sort(rs.begin(), rs.end());
-                    std::sort(gs.begin(), gs.end());
-                    std::sort(bs.begin(), bs.end());
+                    std::sort(rs, rs + 9);
+                    std::sort(gs, gs + 9);
+                    std::sort(bs, bs + 9);
 
-                    int current_idx = (y * width + x) * 4;
-                    image_data[current_idx + 0] = rs[4];
-                    image_data[current_idx + 1] = gs[4];
-                    image_data[current_idx + 2] = bs[4];
+                    int cur = (y * width + x) * 4;
+                    image_data[cur + 0] = rs[4];
+                    image_data[cur + 1] = gs[4];
+                    image_data[cur + 2] = bs[4];
                 }
             }
         }
