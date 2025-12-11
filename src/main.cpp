@@ -26,7 +26,7 @@ THE SOFTWARE.*/
 #include <memory>
 #include <thread>
 
-#include "../libs/imgui/imgui.h"
+#include "imgui.h"
 #include "Application.h"
 
 

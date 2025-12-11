@@ -14,6 +14,10 @@
 struct UIState {
     int scene_id = 0; // 场景ID
     int samples_per_pixel = 100; // 采样数
+    int max_depth = 50; // 最大光线弹射深度
+    float vfov = 20.0f; // 垂直视场角
+    float aperture = 0.0f; // 光圈大小
+    float focus_dist = 10.0f; // 对焦距离
     bool restart_render = true; // 是否重新渲染
     std::atomic<bool> is_rendering = {false}; // 是否正在渲染
     float last_fps = 0.0f; // 上一帧的帧率

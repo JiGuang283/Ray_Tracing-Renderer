@@ -32,7 +32,13 @@ bool Application::init() {
     width_ = cfg.image_width;
     height_ = static_cast<int>(width_ / cfg.aspect_ratio);
 
-    win_app_ = WindowsApp::getInstance(width_, height_, "CGAssignment4: Ray Tracing");
+    // 初始化 UI 参数为场景默认值
+    ui_.vfov = cfg.vfov;
+    ui_.aperture = cfg.aperture;
+    ui_.focus_dist = cfg.focus_dist;
+    ui_.max_depth = RenderConfig::kMaxDepth;
+
+    win_app_ = WindowsApp::getInstance(width_, height_, "Ray_Tracing-Renderer");
     if (!win_app_) {
         std::cerr << "Error: failed to create window" << std::endl;
         return false;
@@ -78,9 +84,13 @@ void Application::start_render() {
     win_app_->setRenderSize(width_, height_);
     image_data_.resize(width_ * height_ * 4);
 
+    // 使用 UI 参数创建相机
     auto cam = std::make_shared<camera>(
-        config.lookfrom, config.lookat, config.vup, config.vfov,
-        ratio_val, config.aperture, config.focus_dist,
+        config.lookfrom, config.lookat, config.vup, 
+        ui_.vfov, // 使用 UI 中的 FOV
+        ratio_val, 
+        ui_.aperture, // 使用 UI 中的光圈
+        ui_.focus_dist, // 使用 UI 中的对焦距离
         RenderConfig::kShutterOpen, RenderConfig::kShutterClose);
 
     render_buffer_ = std::make_shared<RenderBuffer>(width_, height_);
@@ -89,7 +99,7 @@ void Application::start_render() {
     auto integrator = std::make_shared<PathIntegrator>();
     renderer_.set_integrator(integrator);
     renderer_.set_samples(ui_.samples_per_pixel);
-    renderer_.set_max_depth(RenderConfig::kMaxDepth);
+    renderer_.set_max_depth(ui_.max_depth); // 使用 UI 中的最大深度
 
     render_thread_ = std::thread([this, world = config.world, cam, bg = config.background]() {
         renderer_.render(world, cam, bg, *render_buffer_);
@@ -122,22 +132,52 @@ void Application::update_display_from_buffer() {
 }
 
 void Application::render_ui() {
-    // Viewport
+    // 设置主窗口占满整个屏幕，无标题栏，作为背景容器
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoTitleBar |
+                                    ImGuiWindowFlags_NoResize |
+                                    ImGuiWindowFlags_NoMove |
+                                    ImGuiWindowFlags_NoCollapse |
+                                    ImGuiWindowFlags_NoBringToFrontOnFocus |
+                                    ImGuiWindowFlags_NoNavFocus;
+
+    ImGui::Begin("MainDock", nullptr, window_flags);
+    ImGui::PopStyleVar(2); // 恢复 Padding 和 Rounding
+
+    // 定义布局参数
+    float control_width = 320.0f; // 控制面板宽度
+    float avail_w = ImGui::GetContentRegionAvail().x;
+    float image_w = avail_w - control_width; // 剩余宽度给渲染画面
+
+    // 左侧：渲染画面 (Render Output)
+    ImGui::BeginChild("RenderView", ImVec2(image_w, 0), false);
     if (win_app_->getTexture()) {
-        ImGui::SetNextWindowPos(ImVec2(0, 0));
-        ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0,0,0,0));
-        ImGui::Begin("Viewport", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBringToFrontOnFocus);
+        // 在该区域内绘制图片，自动缩放以适应区域
         ImGui::Image((void*)win_app_->getTexture(), ImGui::GetContentRegionAvail());
-        ImGui::End();
-        ImGui::PopStyleColor();
-        ImGui::PopStyleVar();
     }
+    ImGui::EndChild();
 
-    // Controls
-    ImGui::Begin("Controls");
+    ImGui::SameLine(); // 让下一个窗口显示在右侧
 
+    // 右侧：控制面板 (Controls)
+    // 给控制面板加一点背景色区分
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyle().Colors[ImGuiCol_FrameBg]);
+    ImGui::BeginChild("ControlsView", ImVec2(0, 0), true); // 0,0 代表填满剩余空间
+    ImGui::PopStyleColor();
+
+    // 添加一些 Padding 让控件不要贴边
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10, 10));
+    // 注意：这里需要重新开启一个像 Window 一样的区域来应用 Padding，
+    // 或者直接在 Child 内部排版。简单起见，我们直接开始绘制控件。
+
+    ImGui::Text("Renderer Controls");
+    ImGui::Separator();
+
+    //  Controls 窗口的代码逻辑
     if (ui_.is_rendering) {
         float fps = ImGui::GetIO().Framerate;
         float ms  = fps > 0.f ? 1000.0f / fps : 0.f;
@@ -154,10 +194,29 @@ void Application::render_ui() {
 
     const char *scene_names[] = {"Random Spheres", "Example Light", "Two Spheres", "Perlin Spheres", "Earth", "Simple Light", "Cornell Box", "Cornell Smoke", "Final Scene"};
     ImGui::Text("1. Select Scene");
-    ImGui::Combo("##Scene", &ui_.scene_id, scene_names, IM_ARRAYSIZE(scene_names));
+    
+    // 检测场景是否切换
+    int old_scene = ui_.scene_id;
+    if (ImGui::Combo("##Scene", &ui_.scene_id, scene_names, IM_ARRAYSIZE(scene_names))) {
+        if (ui_.scene_id != old_scene) {
+            // 切换场景时，重新加载该场景的默认参数
+            SceneConfig cfg = select_scene(ui_.scene_id);
+            ui_.vfov = cfg.vfov;
+            ui_.aperture = cfg.aperture;
+            ui_.focus_dist = cfg.focus_dist;
+            ui_.restart_render = true;
+        }
+    }
 
     ImGui::Separator();
-    ImGui::Text("2. Resolution Settings");
+    ImGui::Text("2. Camera Settings");
+    
+    ImGui::SliderFloat("FOV", &ui_.vfov, 1.0f, 120.0f);
+    ImGui::SliderFloat("Aperture", &ui_.aperture, 0.0f, 2.0f);
+    ImGui::SliderFloat("Focus Dist", &ui_.focus_dist, 0.1f, 50.0f);
+
+    ImGui::Separator();
+    ImGui::Text("3. Resolution Settings");
 
     ImGui::InputInt("Width (px)", &ui_.image_width, 10, 100);
     if (ui_.image_width < 64) ui_.image_width = 64;
@@ -173,9 +232,11 @@ void Application::render_ui() {
     ImGui::TextDisabled("Output Size: %d x %d", ui_.image_width, current_height);
 
     ImGui::Separator();
-    ImGui::Text("3. Quality Settings");
+    ImGui::Text("4. Quality Settings");
 
-    ImGui::InputInt("SPP (Quality)", &ui_.samples_per_pixel, 10, 100);
+    ImGui::InputInt("SPP (Samples)", &ui_.samples_per_pixel, 10, 100);
+    ImGui::SliderInt("Max Depth", &ui_.max_depth, 1, 100); // 添加最大深度控制
+    
     if (ui_.samples_per_pixel < 1) ui_.samples_per_pixel = 1;
     ImGui::TextDisabled("(Higher SPP = Less Noise, More Time)");
 
@@ -187,5 +248,8 @@ void Application::render_ui() {
         }
     }
 
-    ImGui::End();
+    ImGui::PopStyleVar(); // Pop Padding
+    ImGui::EndChild(); // End ControlsView
+
+    ImGui::End(); // End MainDock
 }
