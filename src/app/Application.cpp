@@ -2,6 +2,11 @@
 
 #include <cmath>
 #include <iostream>
+#include <fstream>
+#include <string>
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 #include "camera.h"
 #include "imgui.h"
@@ -110,6 +115,49 @@ void Application::start_render() {
         }
         ui_.is_rendering = false;
     });
+}
+
+void Application::save_image() const {
+    // 确保数据不为空
+    if (image_data_.empty() || width_ == 0 || height_ == 0) {
+        std::cerr << "No image data to save." << std::endl;
+        return;
+    }
+
+    std::string filename = "output";
+    
+    switch (ui_.save_format_idx) {
+        case 0: { // PPM
+            filename += ".ppm";
+            std::ofstream ofs(filename);
+            ofs << "P3\n" << width_ << " " << height_ << "\n255\n";
+            for (int i = 0; i < width_ * height_; ++i) {
+                ofs << static_cast<int>(image_data_[i * 4 + 0]) << " "
+                    << static_cast<int>(image_data_[i * 4 + 1]) << " "
+                    << static_cast<int>(image_data_[i * 4 + 2]) << "\n";
+            }
+            ofs.close();
+            break;
+        }
+        case 1: // PNG
+            filename += ".png";
+            // stride_in_bytes = width * 4 (RGBA)
+            stbi_write_png(filename.c_str(), width_, height_, 4, image_data_.data(), width_ * 4);
+            break;
+        case 2: // BMP
+            filename += ".bmp";
+            stbi_write_bmp(filename.c_str(), width_, height_, 4, image_data_.data());
+            break;
+        case 3: // JPG
+            filename += ".jpg";
+            // quality = 90
+            stbi_write_jpg(filename.c_str(), width_, height_, 4, image_data_.data(), 90);
+            break;
+        default:
+            std::cerr << "Unknown format" << std::endl;
+            return;
+    }
+    std::cout << "Image saved to " << filename << std::endl;
 }
 
 void Application::update_display_from_buffer() {
@@ -246,6 +294,16 @@ void Application::render_ui() {
         if (!ui_.is_rendering) {
             ui_.restart_render = true;
         }
+    }
+
+    ImGui::Separator();
+    
+    // 图片格式选择
+    const char* formats[] = { "PPM (Raw)", "PNG (Lossless)", "BMP (Bitmap)", "JPG (Compressed)" };
+    ImGui::Combo("Format", &ui_.save_format_idx, formats, IM_ARRAYSIZE(formats));
+
+    if (ImGui::Button("Save Image", ImVec2(-1.0f, 30.0f))) {
+        save_image();
     }
 
     ImGui::PopStyleVar(); // Pop Padding
