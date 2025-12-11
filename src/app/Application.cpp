@@ -5,13 +5,14 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <deque>
+#include <mutex>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
 #include "camera.h"
 #include "imgui.h"
-#include "path_integrator.h"
 #include "scenes.h"
 
 namespace RenderConfig {
@@ -26,14 +27,12 @@ Application::Application(int initial_scene_id) {
 }
 
 Application::~Application() {
-    if (render_thread_.joinable()) {
-        renderer_.cancel();
-        render_thread_.join();
-    }
+    stop_render();
 }
 
 // Init
 bool Application::init() {
+    log("Initializing Application...");
     SceneConfig cfg = select_scene(ui_.scene_id);
     width_ = cfg.image_width;
     height_ = static_cast<int>(width_ / cfg.aspect_ratio);
@@ -52,8 +51,9 @@ bool Application::init() {
     }
 
     image_data_.resize(width_ * height_ * 4); // RGBA
-    start_render();
+    start_render(false);
     ui_.restart_render = false;
+    log("Initialization complete.");
     return true;
 }
 
@@ -61,8 +61,8 @@ void Application::run() {
     while (!win_app_->shouldWindowClose()) { // Render loop
         win_app_->processEvent();
 
-        if (ui_.restart_render && !ui_.is_rendering) {
-            start_render();
+        if (ui_.restart_render && !ui_.is_rendering && !ui_.is_paused) {
+            start_render(false);
             ui_.restart_render = false;
         }
 
@@ -74,38 +74,76 @@ void Application::run() {
     }
 }
 
-void Application::start_render() {
+void Application::log(const std::string& msg) {
+    std::lock_guard<std::mutex> lock(log_mutex_);
+    logs_.push_back(msg);
+    if (logs_.size() > 100) logs_.pop_front();
+}
+
+void Application::stop_render() {
     if (render_thread_.joinable()) {
         renderer_.cancel();
         render_thread_.join();
     }
+    ui_.is_rendering = false;
+    ui_.is_paused = false;
+    log("Render stopped by user.");
+}
+
+void Application::pause_render() {
+    if (ui_.is_rendering) {
+        renderer_.cancel();
+        if (render_thread_.joinable()) {
+            render_thread_.join();
+        }
+        ui_.is_rendering = false;
+        ui_.is_paused = true;
+        log("Render paused.");
+    }
+}
+
+void Application::start_render(bool resume) {
+    if (render_thread_.joinable()) {
+        renderer_.cancel();
+        render_thread_.join();
+    }
+
+    if (resume) {
+        if (!render_buffer_ || render_buffer_->get_width() != ui_.image_width) {
+            resume = false;
+            log("Cannot resume: buffer invalid or resolution changed. Starting new render.");
+        }
+    }
+
     renderer_.reset();
     ui_.is_rendering = true;
+    ui_.is_paused = false;
+    ui_.render_start_time = ImGui::GetTime(); // 记录开始时间
 
     SceneConfig config = select_scene(ui_.scene_id);
     float ratio_val = static_cast<float>(ui_.aspect_w) / static_cast<float>(ui_.aspect_h);
 
-    width_ = ui_.image_width;
-    height_ = static_cast<int>(width_ / ratio_val);
+    if (!resume) {
+        width_ = ui_.image_width;
+        height_ = static_cast<int>(width_ / ratio_val);
+        win_app_->setRenderSize(width_, height_);
+        image_data_.resize(width_ * height_ * 4);
+        render_buffer_ = std::make_shared<RenderBuffer>(width_, height_);
+        render_buffer_->clear();
+        log("Starting render: " + std::to_string(width_) + "x" + std::to_string(height_));
+    } else {
+        log("Resuming render...");
+    }
 
-    win_app_->setRenderSize(width_, height_);
-    image_data_.resize(width_ * height_ * 4);
-
-    // 使用 UI 参数创建相机
     auto cam = std::make_shared<camera>(
         config.lookfrom, config.lookat, config.vup, 
-        ui_.vfov, // 使用 UI 中的 FOV
+        ui_.vfov, 
         ratio_val, 
-        ui_.aperture, // 使用 UI 中的光圈
-        ui_.focus_dist, // 使用 UI 中的对焦距离
+        ui_.aperture, 
+        ui_.focus_dist, 
         RenderConfig::kShutterOpen, RenderConfig::kShutterClose);
 
-    render_buffer_ = std::make_shared<RenderBuffer>(width_, height_);
-    render_buffer_->clear();
-
-    // 选择积分器
     switch (ui_.integrator_idx) {
-
         case 0:
             renderer_.set_integrator(ui_.integrator);
             break;
@@ -124,7 +162,7 @@ void Application::start_render() {
     }
 
     renderer_.set_samples(ui_.samples_per_pixel);
-    renderer_.set_max_depth(ui_.max_depth); // 使用 UI 中的最大深度
+    renderer_.set_max_depth(ui_.max_depth);
 
     render_thread_ = std::thread([this, world = config.world, cam, bg = config.background]() {
         renderer_.render(world, cam, bg, *render_buffer_);
@@ -132,13 +170,13 @@ void Application::start_render() {
             float fps = ImGui::GetIO().Framerate;
             ui_.last_fps = fps;
             ui_.last_ms = fps > 0.0f ? (1000.0f / fps) : 0.0f;
+            log("Render finished successfully.");
         }
         ui_.is_rendering = false;
     });
-} //存入build
+}
 
 void Application::save_image() const {
-    // 确保数据不为空
     if (image_data_.empty() || width_ == 0 || height_ == 0) {
         std::cerr << "No image data to save." << std::endl;
         return;
@@ -161,7 +199,6 @@ void Application::save_image() const {
         }
         case 1: // PNG
             filename += ".png";
-            // stride_in_bytes = width * 4 (RGBA)
             stbi_write_png(filename.c_str(), width_, height_, 4, image_data_.data(), width_ * 4);
             break;
         case 2: // BMP
@@ -170,7 +207,6 @@ void Application::save_image() const {
             break;
         case 3: // JPG
             filename += ".jpg";
-            // quality = 90
             stbi_write_jpg(filename.c_str(), width_, height_, 4, image_data_.data(), 90);
             break;
         default:
@@ -192,7 +228,6 @@ void Application::update_display_from_buffer() {
         for (int i = 0; i < width_; ++i) {
             const auto &c = pixels[height_ - 1 - j][i];
             int idx = (j * width_ + i) * 4;
-            // Apply Gamma Correction
             image_data_[idx + 0] = static_cast<unsigned char>(255.999 * pow(c.x(), inv_gamma));
             image_data_[idx + 1] = static_cast<unsigned char>(255.999 * pow(c.y(), inv_gamma));
             image_data_[idx + 2] = static_cast<unsigned char>(255.999 * pow(c.z(), inv_gamma));
@@ -212,7 +247,6 @@ void Application::apply_post_processing() {
         return;
     }
 
-    // Helper to get pixel index safely
     auto get_idx = [&](int x, int y) {
         x = std::max(0, std::min(x, width_ - 1));
         y = std::max(0, std::min(y, height_ - 1));
@@ -220,7 +254,7 @@ void Application::apply_post_processing() {
     };
 
     if (ui_.post_process_type == 0 || ui_.post_process_type == 1) {
-        std::vector<unsigned char> temp_data = image_data_; // Copy for convolution
+        std::vector<unsigned char> temp_data = image_data_;
         
         #pragma omp parallel for
         for (int y = 0; y < height_; ++y) {
@@ -228,12 +262,11 @@ void Application::apply_post_processing() {
                 int r = 0, g = 0, b = 0;
                 int weight_sum = 0;
 
-                // Kernel definition
                 int kernel[3][3];
-                if (ui_.post_process_type == 0) { // Simple Denoise (Box Blur)
+                if (ui_.post_process_type == 0) {
                     for(int i=0;i<3;i++) for(int j=0;j<3;j++) kernel[i][j] = 1;
                     weight_sum = 9;
-                } else { // Sharpen
+                } else {
                     int s_k[3][3] = {{0, -1, 0}, {-1, 5, -1}, {0, -1, 0}};
                     for(int i=0;i<3;i++) for(int j=0;j<3;j++) kernel[i][j] = s_k[i][j];
                     weight_sum = 1;
@@ -255,7 +288,7 @@ void Application::apply_post_processing() {
                 image_data_[current_idx + 2] = static_cast<unsigned char>(std::max(0, std::min(255, b / weight_sum)));
             }
         }
-    } else if (ui_.post_process_type == 2) { // Grayscale
+    } else if (ui_.post_process_type == 2) {
         #pragma omp parallel for
         for (int i = 0; i < width_ * height_; ++i) {
             int idx = i * 4;
@@ -265,7 +298,7 @@ void Application::apply_post_processing() {
             image_data_[idx + 1] = gray;
             image_data_[idx + 2] = gray;
         }
-    } else if (ui_.post_process_type == 3) { // Invert
+    } else if (ui_.post_process_type == 3) {
          #pragma omp parallel for
         for (int i = 0; i < width_ * height_; ++i) {
             int idx = i * 4;
@@ -277,7 +310,6 @@ void Application::apply_post_processing() {
 }
 
 void Application::render_ui() {
-    // 设置主窗口占满整个屏幕，无标题栏，作为背景容器
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
@@ -291,38 +323,35 @@ void Application::render_ui() {
                                     ImGuiWindowFlags_NoNavFocus;
 
     ImGui::Begin("MainDock", nullptr, window_flags);
-    ImGui::PopStyleVar(2); // 恢复 Padding 和 Rounding
+    ImGui::PopStyleVar(2);
 
-    // 定义布局参数
-    float control_width = 320.0f; // 控制面板宽度
-    float avail_w = ImGui::GetContentRegionAvail().x;
-    float image_w = avail_w - control_width; // 剩余宽度给渲染画面
+    float control_width = 450.0f;
+    float log_height = 150.0f;
+    
+    ImVec2 avail = ImGui::GetContentRegionAvail();
+    float top_height = avail.y - log_height;
+    float image_w = avail.x - control_width; 
 
-    // 左侧：渲染画面 (Render Output)
+    ImGui::BeginChild("TopArea", ImVec2(0, top_height), false);
+
     ImGui::BeginChild("RenderView", ImVec2(image_w, 0), false);
     if (win_app_->getTexture()) {
-        // 在该区域内绘制图片，自动缩放以适应区域
         ImGui::Image((void*)win_app_->getTexture(), ImGui::GetContentRegionAvail());
     }
     ImGui::EndChild();
 
-    ImGui::SameLine(); // 让下一个窗口显示在右侧
+    ImGui::SameLine();
 
-    // 右侧：控制面板 (Controls)
-    // 给控制面板加一点背景色区分
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyle().Colors[ImGuiCol_FrameBg]);
-    ImGui::BeginChild("ControlsView", ImVec2(0, 0), true); // 0,0 代表填满剩余空间
+    ImGui::BeginChild("ControlsView", ImVec2(0, 0), true);
+    ImGui::SetWindowFontScale(1.3f);
     ImGui::PopStyleColor();
 
-    // 添加一些 Padding 让控件不要贴边
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10, 10));
-    // 注意：这里需要重新开启一个像 Window 一样的区域来应用 Padding，
-    // 或者直接在 Child 内部排版。简单起见，我们直接开始绘制控件。
 
     ImGui::Text("Renderer Controls");
     ImGui::Separator();
 
-    //  Controls 窗口的代码逻辑
     if (ui_.is_rendering) {
         float fps = ImGui::GetIO().Framerate;
         float ms  = fps > 0.f ? 1000.0f / fps : 0.f;
@@ -330,6 +359,27 @@ void Application::render_ui() {
         float progress = renderer_.get_progress();
         ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f));
         ImGui::Text("Rendering... %.1f%%", progress * 100.0f);
+
+        if (progress > 0.001f) {
+            double current_time = ImGui::GetTime();
+            double elapsed = current_time - ui_.render_start_time;
+            double remaining = (elapsed / progress) - elapsed;
+            
+            if (remaining < 0) remaining = 0;
+
+            int r_hour = static_cast<int>(remaining) / 3600;
+            int r_min = (static_cast<int>(remaining) % 3600) / 60;
+            int r_sec = static_cast<int>(remaining) % 60;
+            
+            if (r_hour > 0)
+                ImGui::Text("ETA: %dh %dm %ds", r_hour, r_min, r_sec);
+            else
+                ImGui::Text("ETA: %dm %ds", r_min, r_sec);
+        } else {
+            ImGui::Text("ETA: Calculating...");
+        }
+    } else if (ui_.is_paused) {
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Status: Paused");
     } else {
         ImGui::Text("Last Render: %.3f ms/frame (%.1f FPS)", ui_.last_ms, ui_.last_fps);
         ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "Status: Idle");
@@ -340,11 +390,9 @@ void Application::render_ui() {
     const char *scene_names[] = {"Random Spheres", "Example Light", "Two Spheres", "Perlin Spheres", "Earth", "Simple Light", "Cornell Box", "Cornell Smoke", "Final Scene"};
     ImGui::Text("1. Select Scene");
     
-    // 检测场景是否切换
     int old_scene = ui_.scene_id;
     if (ImGui::Combo("##Scene", &ui_.scene_id, scene_names, IM_ARRAYSIZE(scene_names))) {
         if (ui_.scene_id != old_scene) {
-            // 切换场景时，重新加载该场景的默认参数
             SceneConfig cfg = select_scene(ui_.scene_id);
             ui_.vfov = cfg.vfov;
             ui_.aperture = cfg.aperture;
@@ -380,12 +428,11 @@ void Application::render_ui() {
     ImGui::Text("4. Quality Settings");
 
     ImGui::InputInt("SPP (Samples)", &ui_.samples_per_pixel, 10, 100);
-    ImGui::SliderInt("Max Depth", &ui_.max_depth, 1, 100); // 添加最大深度控制
+    ImGui::SliderInt("Max Depth", &ui_.max_depth, 1, 100);
     
     if (ui_.samples_per_pixel < 1) ui_.samples_per_pixel = 1;
     ImGui::TextDisabled("(Higher SPP = Less Noise, More Time)");
 
-    // 积分器选择
     const char* integrator_names[] = { "Path Integrator", "RR Path Integrator", "PBR Path Integrator" };
     ImGui::Combo("Integrator", &ui_.integrator_idx, integrator_names, IM_ARRAYSIZE(integrator_names));
 
@@ -400,15 +447,30 @@ void Application::render_ui() {
 
     ImGui::Separator();
 
-    if (ImGui::Button("Apply & Start Render", ImVec2(-1.0f, 40.0f))) {
-        if (!ui_.is_rendering) {
-            ui_.restart_render = true;
+    if (ui_.is_rendering) {
+        if (ImGui::Button("Pause", ImVec2(100, 40))) {
+            pause_render();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Stop", ImVec2(100, 40))) {
+            stop_render();
+        }
+    } else if (ui_.is_paused) {
+        if (ImGui::Button("Resume", ImVec2(100, 40))) {
+            start_render(true);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Stop", ImVec2(100, 40))) {
+            stop_render();
+        }
+    } else {
+        if (ImGui::Button("Start Render", ImVec2(-1.0f, 40.0f))) {
+            start_render(false);
         }
     }
 
     ImGui::Separator();
     
-    // 图片格式选择
     const char* formats[] = { "PPM (Raw)", "PNG (Lossless)", "BMP (Bitmap)", "JPG (Compressed)" };
     ImGui::Combo("Format", &ui_.save_format_idx, formats, IM_ARRAYSIZE(formats));
 
@@ -416,8 +478,25 @@ void Application::render_ui() {
         save_image();
     }
 
-    ImGui::PopStyleVar(); // Pop Padding
-    ImGui::EndChild(); // End ControlsView
+    ImGui::PopStyleVar();
+    ImGui::EndChild();
 
-    ImGui::End(); // End MainDock
+    ImGui::EndChild();
+
+    ImGui::BeginChild("LogArea", ImVec2(0, 0), true);
+    ImGui::Text("Log / Console");
+    ImGui::Separator();
+    ImGui::BeginChild("LogScroll", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+    {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        for (const auto& msg : logs_) {
+            ImGui::TextUnformatted(msg.c_str());
+        }
+        if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+            ImGui::SetScrollHereY(1.0f);
+    }
+    ImGui::EndChild();
+    ImGui::EndChild();
+
+    ImGui::End();
 }

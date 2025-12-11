@@ -2,7 +2,10 @@
 #define APPLICATION_H
 
 #include <atomic>
+#include <deque>
 #include <memory>
+#include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -24,6 +27,7 @@ struct UIState {
     float focus_dist = 10.0f; // 对焦距离
     bool restart_render = true; // 是否重新渲染
     std::atomic<bool> is_rendering = {false}; // 是否正在渲染
+    bool is_paused = false; // 是否暂停
     float last_fps = 0.0f; // 上一帧的帧率
     float last_ms = 0.0f; // 上一帧的毫秒数
     int image_width = 400; // 图片宽度
@@ -32,6 +36,8 @@ struct UIState {
     int aspect_w = 16;
     int aspect_h = 9;
     int save_format_idx = 1; // 0: PPM, 1: PNG, 2: BMP, 3: JPG
+
+    double render_start_time = 0.0; // 渲染开始时间
 
     // 输出后处理
     bool enable_post_process = false;
@@ -55,12 +61,16 @@ public:
     void run();
 
 private:
-    void start_render(); // 启动渲染
+    void start_render(bool resume = false); // 启动渲染 (支持继续)
+    void stop_render(); // 停止渲染
+    void pause_render(); // 暂停渲染
+    
     void save_image() const;   // 保存图片
     void update_display_from_buffer(); // 从缓冲区更新显示
     void apply_post_processing(); // 应用后处理
 
     void render_ui(); // 渲染UI
+    void log(const std::string& msg); // 记录日志
 
 private:
     UIState ui_;  // UI状态
@@ -70,6 +80,9 @@ private:
     std::thread render_thread_; // 渲染线程
     std::vector<unsigned char> image_data_; // 图片数据
     int width_ = 0, height_ = 0; // 窗口宽高
+
+    std::deque<std::string> logs_; // 日志队列
+    std::mutex log_mutex_; // 日志锁
 };
 
 #endif //APPLICATION_H
