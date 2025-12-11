@@ -7,11 +7,15 @@
 #include <vector>
 
 #include "WindowsApp.h"
+#include "path_integrator.h"
+#include "pbr_path_integrator.h"
 #include "renderer.h"
 #include "render_buffer.h"
+#include "rr_path_integrator.h"
 
 // UI 状态
 struct UIState {
+
     int scene_id = 0; // 场景ID
     int samples_per_pixel = 100; // 采样数
     int max_depth = 50; // 最大光线弹射深度
@@ -23,6 +27,7 @@ struct UIState {
     float last_fps = 0.0f; // 上一帧的帧率
     float last_ms = 0.0f; // 上一帧的毫秒数
     int image_width = 400; // 图片宽度
+
     // 图片宽高比
     int aspect_w = 16;
     int aspect_h = 9;
@@ -32,6 +37,13 @@ struct UIState {
     bool enable_post_process = false;
     int post_process_type = 0; // 0: Blur, 1: Sharpen, 2: Grayscale, 3: Invert
     float gamma = 2.0f;
+
+    //积分器类型
+    int integrator_idx = 0; // 0: Path, 1: RR, 2: PBR
+    std::shared_ptr<Integrator> integrator = std::make_shared<PathIntegrator>();
+    std::shared_ptr<Integrator> rrIntegrator = std::make_shared<RRPathInterator>();
+    std::shared_ptr<Integrator> pbrIntegrator = std::make_shared<PBRPathIntegrator>();
+
 };
 
 class Application {

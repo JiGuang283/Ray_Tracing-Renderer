@@ -20,13 +20,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.*/
 
-#include <chrono>
 #include <iomanip>
-#include <iostream>
 #include <memory>
-#include <thread>
 
-#include "imgui.h"
+#include "rr_path_integrator.h"
+#include "path_integrator.h"
+#include "pbr_path_integrator.h"
+
 #include "Application.h"
 
 

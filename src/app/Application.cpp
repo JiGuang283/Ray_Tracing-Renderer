@@ -103,8 +103,26 @@ void Application::start_render() {
     render_buffer_ = std::make_shared<RenderBuffer>(width_, height_);
     render_buffer_->clear();
 
-    auto integrator = std::make_shared<PathIntegrator>();
-    renderer_.set_integrator(integrator);
+    // 选择积分器
+    switch (ui_.integrator_idx) {
+
+        case 0:
+            renderer_.set_integrator(ui_.integrator);
+            break;
+
+        case 1:
+            renderer_.set_integrator(ui_.rrIntegrator);
+            break;
+
+        case 2:
+            renderer_.set_integrator(ui_.pbrIntegrator);
+            break;
+
+        default:
+            renderer_.set_integrator(ui_.integrator);
+            break;
+    }
+
     renderer_.set_samples(ui_.samples_per_pixel);
     renderer_.set_max_depth(ui_.max_depth); // 使用 UI 中的最大深度
 
@@ -366,6 +384,10 @@ void Application::render_ui() {
     
     if (ui_.samples_per_pixel < 1) ui_.samples_per_pixel = 1;
     ImGui::TextDisabled("(Higher SPP = Less Noise, More Time)");
+
+    // 积分器选择
+    const char* integrator_names[] = { "Path Integrator", "RR Path Integrator", "PBR Path Integrator" };
+    ImGui::Combo("Integrator", &ui_.integrator_idx, integrator_names, IM_ARRAYSIZE(integrator_names));
 
     ImGui::Separator();
     ImGui::Text("5. Post Processing");
