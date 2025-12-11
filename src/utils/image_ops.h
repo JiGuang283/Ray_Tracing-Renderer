@@ -4,7 +4,6 @@
 #pragma once
 
 #include <vector>
-#include <string>
 #include "vec3.h" // 假设 vec3 定义在此处或其包含的头文件中
 
 namespace ImageOps {

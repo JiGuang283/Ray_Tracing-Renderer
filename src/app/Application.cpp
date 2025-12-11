@@ -350,7 +350,13 @@ void Application::render_ui() {
 
     ImGui::Separator();
 
-    const char *scene_names[] = {"Random Spheres", "Example Light", "Two Spheres", "Perlin Spheres", "Earth", "Simple Light", "Cornell Box", "Cornell Smoke", "Final Scene"};
+    const char *scene_names[] = {
+        "random_scene", "example_light_scene",
+        "two_spheres", "pbr_test_scene", "two_perlin_spheres", "Earth",
+        "Simple Light", "Cornell Box", "Cornell Smoke",
+        "Final Scene", "pbr_test_scene", "pbr_spheres_grid", "pbr_materials_gallery",
+        "pbr_reference_scene", "point_light_scene", "mis_demo"
+    };
     ImGui::Text("1. Select Scene");
     
     int old_scene = ui_.scene_id;
@@ -396,7 +402,7 @@ void Application::render_ui() {
     if (ui_.samples_per_pixel < 1) ui_.samples_per_pixel = 1;
     ImGui::TextDisabled("(Higher SPP = Less Noise, More Time)");
 
-    const char* integrator_names[] = { "Path Integrator", "RR Path Integrator", "PBR Path Integrator" };
+    const char* integrator_names[] = { "Path Integrator", "RR Path Integrator", "PBR Path Integrator", "MIS Path Integrator" };
     ImGui::Combo("Integrator", &ui_.integrator_idx, integrator_names, IM_ARRAYSIZE(integrator_names));
 
     ImGui::Separator();
