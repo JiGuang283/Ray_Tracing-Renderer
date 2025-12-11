@@ -23,10 +23,6 @@ THE SOFTWARE.*/
 #include <iomanip>
 #include <memory>
 
-#include "rr_path_integrator.h"
-#include "path_integrator.h"
-#include "pbr_path_integrator.h"
-
 #include "Application.h"
 
 
