@@ -15,6 +15,18 @@
 #include "imgui.h"
 #include "scenes.h"
 
+// Helper for ACES Tone Mapping
+inline vec3 ACESFilm(vec3 x) {
+    float a = 2.51f;
+    float b = 0.03f;
+    float c = 2.43f;
+    float d = 0.59f;
+    float e = 0.14f;
+    // Clamp to avoid negative values before processing
+    x = vec3(std::max(0.0, x.x()), std::max(0.0, x.y()), std::max(0.0, x.z()));
+    return (x*(x*a+b))/(x*(x*c+d)+e);
+}
+
 namespace RenderConfig {
     constexpr int kMaxDepth = 50;
     constexpr double kShutterOpen = 0.0;
@@ -231,11 +243,18 @@ void Application::update_display_from_buffer() {
     #pragma omp parallel for
     for (int j = 0; j < height_; ++j) {
         for (int i = 0; i < width_; ++i) {
-            const auto &c = pixels[height_ - 1 - j][i];
+            auto c = pixels[height_ - 1 - j][i];
+            // Tone Mapping (HDR -> LDR)
+            if (ui_.tone_mapping_type == 1) { // Reinhard
+                c = c / (c + vec3(1.0, 1.0, 1.0));
+            } else if (ui_.tone_mapping_type == 2) { // ACES
+                c = ACESFilm(c);
+            }
             int idx = (j * width_ + i) * 4;
-            image_data_[idx + 0] = static_cast<unsigned char>(255.999 * pow(c.x(), inv_gamma));
-            image_data_[idx + 1] = static_cast<unsigned char>(255.999 * pow(c.y(), inv_gamma));
-            image_data_[idx + 2] = static_cast<unsigned char>(255.999 * pow(c.z(), inv_gamma));
+            // Gamma Correction
+            image_data_[idx + 0] = static_cast<unsigned char>(255.999 * pow(std::max(0.0, c.x()), inv_gamma));
+            image_data_[idx + 1] = static_cast<unsigned char>(255.999 * pow(std::max(0.0, c.y()), inv_gamma));
+            image_data_[idx + 2] = static_cast<unsigned char>(255.999 * pow(std::max(0.0, c.z()), inv_gamma));
             image_data_[idx + 3] = 255;
         }
     }
@@ -310,6 +329,33 @@ void Application::apply_post_processing() {
             image_data_[idx] = 255 - image_data_[idx];
             image_data_[idx + 1] = 255 - image_data_[idx + 1];
             image_data_[idx + 2] = 255 - image_data_[idx + 2];
+        }
+    }else if (ui_.post_process_type == 4) {
+        // Median Filter (Despeckle)
+        std::vector<unsigned char> temp_data = image_data_;
+        #pragma omp parallel for
+        for (int y = 0; y < height_; ++y) {
+            for (int x = 0; x < width_; ++x) {
+                std::vector<unsigned char> rs, gs, bs;
+                rs.reserve(9); gs.reserve(9); bs.reserve(9);
+
+                for (int ky = -1; ky <= 1; ++ky) {
+                    for (int kx = -1; kx <= 1; ++kx) {
+                        int idx = get_idx(x + kx, y + ky);
+                        rs.push_back(temp_data[idx + 0]);
+                        gs.push_back(temp_data[idx + 1]);
+                        bs.push_back(temp_data[idx + 2]);
+                    }
+                }
+                std::sort(rs.begin(), rs.end());
+                std::sort(gs.begin(), gs.end());
+                std::sort(bs.begin(), bs.end());
+
+                int current_idx = (y * width_ + x) * 4;
+                image_data_[current_idx + 0] = rs[4]; // Median
+                image_data_[current_idx + 1] = gs[4];
+                image_data_[current_idx + 2] = bs[4];
+            }
         }
     }
 }
@@ -453,10 +499,15 @@ void Application::render_ui() {
 
     ImGui::Separator();
     ImGui::Text("5. Post Processing");
+
+    // Tone Mapping Control
+    const char* tm_types[] = { "None (Clamp)", "Reinhard", "ACES (Filmic)" };
+    ImGui::Combo("Tone Mapping", &ui_.tone_mapping_type, tm_types, IM_ARRAYSIZE(tm_types));
+
     ImGui::SliderFloat("Gamma", &ui_.gamma, 0.1f, 5.0f);
     ImGui::Checkbox("Enable Filters", &ui_.enable_post_process);
     if (ui_.enable_post_process) {
-        const char* pp_types[] = { "Simple Denoise (Blur)", "Sharpen", "Grayscale", "Invert Colors" };
+        const char* pp_types[] = { "Simple Denoise (Blur)", "Sharpen", "Grayscale", "Invert Colors", "Median (Despeckle)" };
         ImGui::Combo("Filter Type", &ui_.post_process_type, pp_types, IM_ARRAYSIZE(pp_types));
     }
 

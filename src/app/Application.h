@@ -42,7 +42,8 @@ struct UIState {
 
     // 输出后处理
     bool enable_post_process = false;
-    int post_process_type = 0; // 0: Blur, 1: Sharpen, 2: Grayscale, 3: Invert
+    int post_process_type = 0; // 0: Blur, 1: Sharpen, 2: Grayscale, 3: Invert, 4: Median (Denoise)
+    int tone_mapping_type = 0; // 0: None, 1: Reinhard, 2: ACES
     float gamma = 2.0f;
 
     //积分器类型
