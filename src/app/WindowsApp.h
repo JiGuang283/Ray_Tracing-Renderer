@@ -4,11 +4,7 @@
 #include "SDL2/SDL.h"
 
 #include <memory>
-#include <sstream>
 #include <string>
-#include <vector>
-
-#include "vec3.h"
 
 class WindowsApp final {
 

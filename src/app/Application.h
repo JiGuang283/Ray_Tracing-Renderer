@@ -38,6 +38,7 @@ struct UIState {
     int save_format_idx = 1; // 0: PPM, 1: PNG, 2: BMP, 3: JPG
 
     double render_start_time = 0.0; // 渲染开始时间
+    float log_height = 150.0f; // 日志区域高度
 
     // 输出后处理
     bool enable_post_process = false;

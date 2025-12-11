@@ -27,7 +27,7 @@ THE SOFTWARE.*/
 
 
 int main(int argc, char *args[]) {
-    int scene_id = 0;
+    int scene_id = -1;
     if (argc > 1) {
         scene_id = std::atoi(args[1]);
     }

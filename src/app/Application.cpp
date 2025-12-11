@@ -1,6 +1,6 @@
 #include "Application.h"
 
-#include <algorithm> // Added for std::max, std::min
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <fstream>
@@ -185,6 +185,7 @@ void Application::save_image() const {
     std::string filename = "output";
     
     switch (ui_.save_format_idx) {
+
         case 0: { // PPM
             filename += ".ppm";
             std::ofstream ofs(filename);
@@ -197,18 +198,22 @@ void Application::save_image() const {
             ofs.close();
             break;
         }
+
         case 1: // PNG
             filename += ".png";
             stbi_write_png(filename.c_str(), width_, height_, 4, image_data_.data(), width_ * 4);
             break;
+
         case 2: // BMP
             filename += ".bmp";
             stbi_write_bmp(filename.c_str(), width_, height_, 4, image_data_.data());
             break;
+
         case 3: // JPG
             filename += ".jpg";
             stbi_write_jpg(filename.c_str(), width_, height_, 4, image_data_.data(), 90);
             break;
+
         default:
             std::cerr << "Unknown format" << std::endl;
             return;
@@ -294,9 +299,9 @@ void Application::apply_post_processing() {
             int idx = i * 4;
             unsigned char gray = static_cast<unsigned char>(
                 0.299 * image_data_[idx] + 0.587 * image_data_[idx + 1] + 0.114 * image_data_[idx + 2]);
-            image_data_[idx] = gray;
-            image_data_[idx + 1] = gray;
-            image_data_[idx + 2] = gray;
+                image_data_[idx] = gray;
+                image_data_[idx + 1] = gray;
+                image_data_[idx + 2] = gray;
         }
     } else if (ui_.post_process_type == 3) {
          #pragma omp parallel for
@@ -323,17 +328,27 @@ void Application::render_ui() {
                                     ImGuiWindowFlags_NoNavFocus;
 
     ImGui::Begin("MainDock", nullptr, window_flags);
-    ImGui::PopStyleVar(2);
+    ImGui::PopStyleVar(2); // 恢复 Padding 和 Rounding
 
-    float control_width = 450.0f;
-    float log_height = 150.0f;
+    // 定义布局参数
+    float control_width = 450.0f; // 控制面板宽度
     
     ImVec2 avail = ImGui::GetContentRegionAvail();
-    float top_height = avail.y - log_height;
+    
+    // 限制日志区域高度范围
+    float min_log_h = 50.0f;
+    float max_log_h = avail.y - 100.0f;
+    if (ui_.log_height < min_log_h) ui_.log_height = min_log_h;
+    if (ui_.log_height > max_log_h) ui_.log_height = max_log_h;
+
+    float splitter_height = 5.0f;
+    float top_height = avail.y - ui_.log_height - splitter_height;
     float image_w = avail.x - control_width; 
 
+    // --- Top Area ---
     ImGui::BeginChild("TopArea", ImVec2(0, top_height), false);
 
+    // 左侧：渲染画面
     ImGui::BeginChild("RenderView", ImVec2(image_w, 0), false);
     if (win_app_->getTexture()) {
         ImGui::Image((void*)win_app_->getTexture(), ImGui::GetContentRegionAvail());
@@ -483,10 +498,26 @@ void Application::render_ui() {
 
     ImGui::EndChild();
 
+    // Splitter (Resizable Handle)
+    ImGui::InvisibleButton("hsplitter", ImVec2(-1, splitter_height));
+    if (ImGui::IsItemActive()) {
+        ui_.log_height -= ImGui::GetIO().MouseDelta.y;
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+    }
+    // 绘制分隔条视觉效果
+    ImVec2 rectMin = ImGui::GetItemRectMin();
+    ImVec2 rectMax = ImGui::GetItemRectMax();
+    ImGui::GetWindowDrawList()->AddRectFilled(rectMin, rectMax, ImGui::GetColorU32(ImGuiCol_Separator));
+
+    // Bottom Area (Log)
     ImGui::BeginChild("LogArea", ImVec2(0, 0), true);
     ImGui::Text("Log / Console");
+    ImGui::SetWindowFontScale(1.7f);
     ImGui::Separator();
     ImGui::BeginChild("LogScroll", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+    ImGui::SetWindowFontScale(1.5f); // 放大日志输出文字
     {
         std::lock_guard<std::mutex> lock(log_mutex_);
         for (const auto& msg : logs_) {
@@ -496,7 +527,7 @@ void Application::render_ui() {
             ImGui::SetScrollHereY(1.0f);
     }
     ImGui::EndChild();
-    ImGui::EndChild();
+    ImGui::EndChild(); // End LogArea
 
-    ImGui::End();
+    ImGui::End(); // End MainDock
 }
