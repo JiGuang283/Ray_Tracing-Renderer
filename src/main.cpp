@@ -27,6 +27,7 @@ THE SOFTWARE.*/
 #include <thread>
 
 #include "WindowsApp.h"
+#include "direct_light_integrator.h"
 #include "path_integrator.h"
 #include "pbr_path_integrator.h"
 #include "render_buffer.h"
@@ -62,10 +63,11 @@ int main(int argc, char *args[]) {
     auto integrator = make_shared<PathIntegrator>();
     auto rrIntegrator = make_shared<RRPathInterator>();
     auto pbrIntegrator = make_shared<PBRPathIntegrator>();
+    auto dirlightIntegrator = make_shared<DirectLightIntegrator>();
 
     Renderer renderer;
     renderer.set_samples(config.samples_per_pixel);
-    renderer.set_integrator(pbrIntegrator);
+    renderer.set_integrator(dirlightIntegrator);
     renderer.set_max_depth(50);
 
     // Create window app handle
@@ -77,8 +79,9 @@ int main(int argc, char *args[]) {
     }
 
     std::thread renderingThread([&renderer, world = config.world, cam,
-                                 render_buffer, bg = config.background]() {
-        renderer.render(world, cam, bg, *render_buffer);
+                                 render_buffer, bg = config.background,
+                                 lights = config.lights]() {
+        renderer.render(world, cam, bg, *render_buffer, lights);
     });
 
     // Window app loop

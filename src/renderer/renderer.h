@@ -28,7 +28,8 @@ class Renderer {
     }
 
     void render(shared_ptr<hittable> world, shared_ptr<camera> cam,
-                const color &background, RenderBuffer &target_buffer) {
+                const color &background, RenderBuffer &target_buffer,
+                const std::vector<shared_ptr<Light>> &lights = {}) {
         m_is_rendering = true;
 
         auto start_time = std::chrono::high_resolution_clock::now();
@@ -73,8 +74,8 @@ class Renderer {
                             auto v = (j + random_double()) / (image_height - 1);
                             ray r = cam->get_ray(u, v);
                             if (m_integrator) {
-                                pixel_color +=
-                                    m_integrator->Li(r, *world, background);
+                                pixel_color += m_integrator->Li(
+                                    r, *world, background, lights);
                             }
                         }
                         write_color_to_buffer(target_buffer, i, j, pixel_color,

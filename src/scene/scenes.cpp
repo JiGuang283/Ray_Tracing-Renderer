@@ -288,14 +288,17 @@ shared_ptr<hittable> final_scene() {
 shared_ptr<hittable> pbr_test_scene() {
     hittable_list world;
 
-    auto checker = make_shared<checker_texture>(color(0.2, 0.3, 0.1), color(0.9, 0.9, 0.9));
-    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, make_shared<lambertian>(checker)));
+    auto checker = make_shared<checker_texture>(color(0.2, 0.3, 0.1),
+                                                color(0.9, 0.9, 0.9));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000,
+                                  make_shared<lambertian>(checker)));
 
     // Left: Gold (Metallic)
     auto gold_albedo = make_shared<solid_color>(0.8, 0.6, 0.2);
     auto gold_rough = make_shared<solid_color>(0.1, 0.1, 0.1);
     auto gold_metal = make_shared<solid_color>(1.0, 1.0, 1.0);
-    auto gold_mat = make_shared<PBRMaterial>(gold_albedo, gold_rough, gold_metal);
+    auto gold_mat =
+        make_shared<PBRMaterial>(gold_albedo, gold_rough, gold_metal);
     world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, gold_mat));
 
     // Middle: Silver/Textured (Metallic with Noise)
@@ -309,8 +312,37 @@ shared_ptr<hittable> pbr_test_scene() {
     auto blue_albedo = make_shared<solid_color>(0.1, 0.2, 0.5);
     auto blue_rough = make_shared<solid_color>(0.05, 0.05, 0.05);
     auto blue_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
-    auto blue_mat = make_shared<PBRMaterial>(blue_albedo, blue_rough, blue_metal);
+    auto blue_mat =
+        make_shared<PBRMaterial>(blue_albedo, blue_rough, blue_metal);
     world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, blue_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> point_light_scene() {
+    hittable_list world;
+
+    auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // Diffuse Sphere
+    auto lambert = make_shared<lambertian>(color(0.8, 0.2, 0.2));
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, lambert));
+
+    // PBR Metal Sphere
+    auto albedo = make_shared<solid_color>(0.9, 0.9, 0.9);
+    auto roughness = make_shared<solid_color>(0.05, 0.05, 0.05); // Smooth
+    auto metallic = make_shared<solid_color>(1.0, 1.0, 1.0);
+    auto metal_mat = make_shared<PBRMaterial>(albedo, roughness, metallic);
+    world.add(make_shared<sphere>(point3(-3, 1, 0), 1.0, metal_mat));
+
+    // PBR Dielectric-like Sphere
+    auto d_albedo = make_shared<solid_color>(0.2, 0.2, 0.8);
+    auto d_roughness = make_shared<solid_color>(0.1, 0.1, 0.1);
+    auto d_metallic = make_shared<solid_color>(0.0, 0.0, 0.0);
+    auto plastic_mat =
+        make_shared<PBRMaterial>(d_albedo, d_roughness, d_metallic);
+    world.add(make_shared<sphere>(point3(3, 1, 0), 1.0, plastic_mat));
 
     return make_shared<bvh_node>(world, 0, 1);
 }
@@ -408,6 +440,20 @@ SceneConfig select_scene(int scene_id) {
         config.lookat = point3(0, 0, 0);
         config.vfov = 20.0;
         break;
+
+    case 15:
+        config.world = point_light_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 100;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 5, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(
+            make_shared<PointLight>(point3(0, 6, 2), color(50, 50, 50)));
+        break;
+
 
     case 10:
     default:
