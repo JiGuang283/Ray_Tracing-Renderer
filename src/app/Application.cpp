@@ -14,6 +14,7 @@ namespace RenderConfig {
     constexpr double kShutterClose = 1.0;
 } // namespace RenderConfig
 
+
 Application::Application(int initial_scene_id) {
     ui_.scene_id = initial_scene_id;
 }
@@ -25,6 +26,7 @@ Application::~Application() {
     }
 }
 
+// Init
 bool Application::init() {
     SceneConfig cfg = select_scene(ui_.scene_id);
     width_ = cfg.image_width;
@@ -36,14 +38,14 @@ bool Application::init() {
         return false;
     }
 
-    image_data_.resize(width_ * height_ * 4);
+    image_data_.resize(width_ * height_ * 4); // RGBA
     start_render();
     ui_.restart_render = false;
     return true;
 }
 
 void Application::run() {
-    while (!win_app_->shouldWindowClose()) {
+    while (!win_app_->shouldWindowClose()) { // Render loop
         win_app_->processEvent();
 
         if (ui_.restart_render && !ui_.is_rendering) {
@@ -51,7 +53,7 @@ void Application::run() {
             ui_.restart_render = false;
         }
 
-        update_display_from_buffer();
+        update_display_from_buffer(); // Update texture
 
         win_app_->beginRender();
         render_ui();
