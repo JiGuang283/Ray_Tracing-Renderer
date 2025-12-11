@@ -288,14 +288,17 @@ shared_ptr<hittable> final_scene() {
 shared_ptr<hittable> pbr_test_scene() {
     hittable_list world;
 
-    auto checker = make_shared<checker_texture>(color(0.2, 0.3, 0.1), color(0.9, 0.9, 0.9));
-    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, make_shared<lambertian>(checker)));
+    auto checker = make_shared<checker_texture>(color(0.2, 0.3, 0.1),
+                                                color(0.9, 0.9, 0.9));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000,
+                                  make_shared<lambertian>(checker)));
 
     // Left: Gold (Metallic)
     auto gold_albedo = make_shared<solid_color>(0.8, 0.6, 0.2);
     auto gold_rough = make_shared<solid_color>(0.1, 0.1, 0.1);
     auto gold_metal = make_shared<solid_color>(1.0, 1.0, 1.0);
-    auto gold_mat = make_shared<PBRMaterial>(gold_albedo, gold_rough, gold_metal);
+    auto gold_mat =
+        make_shared<PBRMaterial>(gold_albedo, gold_rough, gold_metal);
     world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, gold_mat));
 
     // Middle: Silver/Textured (Metallic with Noise)
@@ -309,8 +312,116 @@ shared_ptr<hittable> pbr_test_scene() {
     auto blue_albedo = make_shared<solid_color>(0.1, 0.2, 0.5);
     auto blue_rough = make_shared<solid_color>(0.05, 0.05, 0.05);
     auto blue_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
-    auto blue_mat = make_shared<PBRMaterial>(blue_albedo, blue_rough, blue_metal);
+    auto blue_mat =
+        make_shared<PBRMaterial>(blue_albedo, blue_rough, blue_metal);
     world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, blue_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> pbr_spheres_grid() {
+    hittable_list world;
+
+    auto checker = make_shared<checker_texture>(color(0.2, 0.3, 0.1),
+                                                color(0.9, 0.9, 0.9));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000,
+                                  make_shared<lambertian>(checker)));
+
+    int rows = 7;
+    int cols = 7;
+    double spacing = 2.5;
+
+    for (int row = 0; row < rows; ++row) {
+        for (int col = 0; col < cols; ++col) {
+            double metallic_val = (double)row / (rows - 1);
+            double roughness_val = clamp((double)col / (cols - 1), 0.05, 1.0);
+
+            auto albedo = make_shared<solid_color>(0.5, 0.0, 0.0);
+            auto roughness = make_shared<solid_color>(
+                roughness_val, roughness_val, roughness_val);
+            auto metallic = make_shared<solid_color>(metallic_val, metallic_val,
+                                                     metallic_val);
+
+            auto mat = make_shared<PBRMaterial>(albedo, roughness, metallic);
+
+            double x = (col - (cols - 1) / 2.0) * spacing;
+            double z = (row - (rows - 1) / 2.0) * spacing;
+
+            world.add(make_shared<sphere>(point3(x, 1, z), 1.0, mat));
+        }
+    }
+
+    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
+    // 将主光源移到相机上方 (y=60)，避免遮挡视线
+    world.add(make_shared<sphere>(point3(0, 60, 0), 10, light_mat));
+    // 调整侧面辅助光源的位置
+    world.add(make_shared<sphere>(point3(-20, 10, 20), 2, light_mat));
+    world.add(make_shared<sphere>(point3(20, 10, 20), 2, light_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> pbr_materials_gallery() {
+    hittable_list world;
+
+    auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // Non-Metals (Metallic = 0.0)
+    struct MaterialInfo {
+        color albedo;
+        double metallic;
+        double roughness;
+    };
+
+    std::vector<MaterialInfo> non_metals = {
+        {color(0.02, 0.02, 0.02), 0.0, 0.5}, // Charcoal
+        {color(0.21, 0.28, 0.08), 0.0, 0.5}, // Grass
+        {color(0.51, 0.51, 0.51), 0.0, 0.5}, // Concrete
+        {color(0.7, 0.7, 0.7), 0.0, 0.5},    // White Paint
+        {color(0.81, 0.81, 0.81), 0.0, 0.5}  // Fresh Snow
+    };
+
+    std::vector<MaterialInfo> metals = {
+        {color(0.54, 0.49, 0.42), 1.0, 0.2}, // Titanium
+        {color(0.56, 0.57, 0.58), 1.0, 0.2}, // Iron
+        {color(0.95, 0.64, 0.54), 1.0, 0.2}, // Copper
+        {color(1.00, 0.71, 0.29), 1.0, 0.2}, // Gold
+        {color(0.91, 0.92, 0.92), 1.0, 0.2}, // Aluminium
+        {color(0.97, 0.96, 0.91), 1.0, 0.2}  // Silver
+    };
+
+    double spacing = 2.5;
+    double start_x_nm = -((non_metals.size() - 1) * spacing) / 2.0;
+
+    for (size_t i = 0; i < non_metals.size(); ++i) {
+        auto &info = non_metals[i];
+        auto mat = make_shared<PBRMaterial>(
+            make_shared<solid_color>(info.albedo),
+            make_shared<solid_color>(info.roughness, info.roughness,
+                                     info.roughness),
+            make_shared<solid_color>(info.metallic, info.metallic,
+                                     info.metallic));
+        world.add(make_shared<sphere>(point3(start_x_nm + i * spacing, 1, -2),
+                                      1.0, mat));
+    }
+
+    double start_x_m = -((metals.size() - 1) * spacing) / 2.0;
+    for (size_t i = 0; i < metals.size(); ++i) {
+        auto &info = metals[i];
+        auto mat = make_shared<PBRMaterial>(
+            make_shared<solid_color>(info.albedo),
+            make_shared<solid_color>(info.roughness, info.roughness,
+                                     info.roughness),
+            make_shared<solid_color>(info.metallic, info.metallic,
+                                     info.metallic));
+        world.add(make_shared<sphere>(point3(start_x_m + i * spacing, 1, 2),
+                                      1.0, mat));
+    }
+
+    // Lights
+    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
+    world.add(make_shared<sphere>(point3(0, 20, 10), 5, light_mat));
 
     return make_shared<bvh_node>(world, 0, 1);
 }
@@ -407,6 +518,30 @@ SceneConfig select_scene(int scene_id) {
         config.lookfrom = point3(13, 2, 3);
         config.lookat = point3(0, 0, 0);
         config.vfov = 20.0;
+        break;
+
+    case 12:
+        config.world = pbr_spheres_grid();
+        config.background = color(0.70, 0.80, 1.00);
+        config.aspect_ratio = 1.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 500;
+        config.background = color(0.05, 0.05, 0.05);
+        config.lookfrom = point3(0, 40, 0);
+        config.lookat = point3(0, 0, 0);
+        config.vup = vec3(0, 0, -1);
+        config.vfov = 25.0;
+        break;
+
+    case 13:
+        config.world = pbr_materials_gallery();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 1000;
+        config.background = color(0.1, 0.1, 0.1);
+        config.lookfrom = point3(0, 10, 20);
+        config.lookat = point3(0, 0, 0);
+        config.vfov = 30.0;
         break;
 
     case 10:
