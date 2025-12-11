@@ -23,10 +23,9 @@ include_directories(${PROJECT_SOURCE_DIR}/src/lighting)
 include_directories(${PROJECT_SOURCE_DIR}/src/renderer)
 include_directories(${PROJECT_SOURCE_DIR}/src/scene)
 include_directories(${PROJECT_SOURCE_DIR}/src/external)
+include_directories(${PROJECT_SOURCE_DIR}/src/external/imgui)
+include_directories(${PROJECT_SOURCE_DIR}/src/external/imgui/backends)
 include_directories(${PROJECT_SOURCE_DIR}/src/app)
-include_directories(${PROJECT_SOURCE_DIR}/libs)
-include_directories(${PROJECT_SOURCE_DIR}/libs/imgui)
-include_directories(${PROJECT_SOURCE_DIR}/libs/imgui/backends)
 
 ############################################################
 # Windows or Linux options
@@ -63,19 +62,10 @@ ENDIF()
 # Recursively find all header and source files in src and its subdirectories
 file(GLOB_RECURSE HEADERS ${PROJECT_SOURCE_DIR}/src/*.h)
 file(GLOB_RECURSE SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp)
-file(GLOB IMGUI_SOURCES
-		${PROJECT_SOURCE_DIR}/libs/imgui/*.cpp
-		${PROJECT_SOURCE_DIR}/libs/imgui/backends/*.cpp
-)
-source_group("Header Files" FILES ${HEADERS})
-
-# Recursively find all header and source files in src and its subdirectories
-file(GLOB_RECURSE HEADERS ${PROJECT_SOURCE_DIR}/src/*.h)
-file(GLOB_RECURSE SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp)
 
 file(GLOB IMGUI_SOURCES
-		${PROJECT_SOURCE_DIR}/libs/imgui/*.cpp
-		${PROJECT_SOURCE_DIR}/libs/imgui/backends/*.cpp
+		src/external/imgui/*.cpp
+		src/external/imgui/backends/*.cpp
 )
 
 source_group("Header Files" FILES ${HEADERS})

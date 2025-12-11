@@ -39,8 +39,17 @@ bool WindowsApp::setup(int width, int height, std::string title) {
     m_window_handle = SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, window_flags);
     if (!m_window_handle) return false;
 
+    // 设置缩放质量 (在创建纹理前设置)
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+
     // 创建 SDL_Renderer
+    // 优先尝试硬件加速，如果失败则尝试软件渲染 (增加 Windows 兼容性)
     m_renderer = SDL_CreateRenderer(m_window_handle, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED);
+    if (!m_renderer) {
+        std::cerr << "Hardware accelerated renderer creation failed, trying software..." << std::endl;
+        m_renderer = SDL_CreateRenderer(m_window_handle, -1, SDL_RENDERER_SOFTWARE);
+    }
+    
     if (!m_renderer) {
         std::cerr << "SDL_Renderer could not be created! SDL_Error: " << SDL_GetError() << std::endl;
         return false;
