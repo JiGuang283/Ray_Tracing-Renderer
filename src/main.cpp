@@ -28,8 +28,10 @@ THE SOFTWARE.*/
 
 #include "WindowsApp.h"
 #include "path_integrator.h"
+#include "pbr_path_integrator.h"
 #include "render_buffer.h"
 #include "renderer.h"
+#include "rr_path_integrator.h"
 #include "scenes.h"
 
 namespace RenderConfig {
@@ -58,10 +60,12 @@ int main(int argc, char *args[]) {
     auto render_buffer = make_shared<RenderBuffer>(width, height);
 
     auto integrator = make_shared<PathIntegrator>();
+    auto rrIntegrator = make_shared<RRPathInterator>();
+    auto pbrIntegrator = make_shared<PBRPathIntegrator>();
 
     Renderer renderer;
     renderer.set_samples(config.samples_per_pixel);
-    renderer.set_integrator(integrator);
+    renderer.set_integrator(pbrIntegrator);
     renderer.set_max_depth(50);
 
     // Create window app handle
