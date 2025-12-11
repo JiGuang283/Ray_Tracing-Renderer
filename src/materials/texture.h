@@ -11,6 +11,24 @@
 class texture {
   public:
     virtual color value(double u, double v, const point3 &p) const = 0;
+
+    virtual double value_scalar(double u, double v, const point3 &p) const {
+        return value(u, v, p).x();
+    }
+
+    virtual vec3 value_normal(double u, double v, const point3 &p) const {
+        color c = value(u, v, p);
+        return unit_vector(c * 2.0 - color(1, 1, 1));
+    }
+
+    virtual double value_roughness(double u, double v, const point3 &p) const {
+        return value_scalar(u, v, p);
+    }
+
+    virtual double value_metallic(double u, double v, const point3 &p) const {
+        return value_scalar(u, v, p);
+    }
+
     virtual ~texture() = default;
 };
 

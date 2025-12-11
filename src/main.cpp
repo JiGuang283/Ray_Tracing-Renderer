@@ -41,7 +41,7 @@ constexpr double kShutterClose = 1.0;
 
 int main(int argc, char *args[]) {
 
-    int scene_id = 10;
+    int scene_id = 11;
     if (argc > 1) {
         scene_id = std::atoi(args[1]);
     }
