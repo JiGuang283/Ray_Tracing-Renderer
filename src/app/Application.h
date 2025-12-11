@@ -27,6 +27,11 @@ struct UIState {
     int aspect_w = 16;
     int aspect_h = 9;
     int save_format_idx = 1; // 0: PPM, 1: PNG, 2: BMP, 3: JPG
+
+    // 输出后处理
+    bool enable_post_process = false;
+    int post_process_type = 0; // 0: Blur, 1: Sharpen, 2: Grayscale, 3: Invert
+    float gamma = 2.0f;
 };
 
 class Application {
@@ -41,6 +46,7 @@ private:
     void start_render(); // 启动渲染
     void save_image() const;   // 保存图片
     void update_display_from_buffer(); // 从缓冲区更新显示
+    void apply_post_processing(); // 应用后处理
 
     void render_ui(); // 渲染UI
 

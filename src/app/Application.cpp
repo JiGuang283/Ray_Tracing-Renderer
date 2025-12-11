@@ -1,5 +1,6 @@
 #include "Application.h"
 
+#include <algorithm> // Added for std::max, std::min
 #include <cmath>
 #include <iostream>
 #include <fstream>
@@ -42,6 +43,7 @@ bool Application::init() {
     ui_.aperture = cfg.aperture;
     ui_.focus_dist = cfg.focus_dist;
     ui_.max_depth = RenderConfig::kMaxDepth;
+    ui_.gamma = 2.0f; // Default Gamma
 
     win_app_ = WindowsApp::getInstance(width_, height_, "Ray_Tracing-Renderer");
     if (!win_app_) {
@@ -115,7 +117,7 @@ void Application::start_render() {
         }
         ui_.is_rendering = false;
     });
-}
+} //存入build
 
 void Application::save_image() const {
     // 确保数据不为空
@@ -165,18 +167,95 @@ void Application::update_display_from_buffer() {
         return;
     }
     const auto &pixels = render_buffer_->get_data();
+    float inv_gamma = 1.0f / ui_.gamma;
+
     #pragma omp parallel for
     for (int j = 0; j < height_; ++j) {
         for (int i = 0; i < width_; ++i) {
             const auto &c = pixels[height_ - 1 - j][i];
             int idx = (j * width_ + i) * 4;
-            image_data_[idx + 0] = static_cast<unsigned char>(255.999 * sqrt(c.x()));
-            image_data_[idx + 1] = static_cast<unsigned char>(255.999 * sqrt(c.y()));
-            image_data_[idx + 2] = static_cast<unsigned char>(255.999 * sqrt(c.z()));
+            // Apply Gamma Correction
+            image_data_[idx + 0] = static_cast<unsigned char>(255.999 * pow(c.x(), inv_gamma));
+            image_data_[idx + 1] = static_cast<unsigned char>(255.999 * pow(c.y(), inv_gamma));
+            image_data_[idx + 2] = static_cast<unsigned char>(255.999 * pow(c.z(), inv_gamma));
             image_data_[idx + 3] = 255;
         }
     }
+
+    if (ui_.enable_post_process) {
+        apply_post_processing();
+    }
+
     win_app_->updateTexture(image_data_.data());
+}
+
+void Application::apply_post_processing() {
+    if (image_data_.empty()) {
+        return;
+    }
+
+    // Helper to get pixel index safely
+    auto get_idx = [&](int x, int y) {
+        x = std::max(0, std::min(x, width_ - 1));
+        y = std::max(0, std::min(y, height_ - 1));
+        return (y * width_ + x) * 4;
+    };
+
+    if (ui_.post_process_type == 0 || ui_.post_process_type == 1) {
+        std::vector<unsigned char> temp_data = image_data_; // Copy for convolution
+        
+        #pragma omp parallel for
+        for (int y = 0; y < height_; ++y) {
+            for (int x = 0; x < width_; ++x) {
+                int r = 0, g = 0, b = 0;
+                int weight_sum = 0;
+
+                // Kernel definition
+                int kernel[3][3];
+                if (ui_.post_process_type == 0) { // Simple Denoise (Box Blur)
+                    for(int i=0;i<3;i++) for(int j=0;j<3;j++) kernel[i][j] = 1;
+                    weight_sum = 9;
+                } else { // Sharpen
+                    int s_k[3][3] = {{0, -1, 0}, {-1, 5, -1}, {0, -1, 0}};
+                    for(int i=0;i<3;i++) for(int j=0;j<3;j++) kernel[i][j] = s_k[i][j];
+                    weight_sum = 1;
+                }
+
+                for (int ky = -1; ky <= 1; ++ky) {
+                    for (int kx = -1; kx <= 1; ++kx) {
+                        int idx = get_idx(x + kx, y + ky);
+                        int w = kernel[ky + 1][kx + 1];
+                        r += temp_data[idx + 0] * w;
+                        g += temp_data[idx + 1] * w;
+                        b += temp_data[idx + 2] * w;
+                    }
+                }
+                
+                int current_idx = (y * width_ + x) * 4;
+                image_data_[current_idx + 0] = static_cast<unsigned char>(std::max(0, std::min(255, r / weight_sum)));
+                image_data_[current_idx + 1] = static_cast<unsigned char>(std::max(0, std::min(255, g / weight_sum)));
+                image_data_[current_idx + 2] = static_cast<unsigned char>(std::max(0, std::min(255, b / weight_sum)));
+            }
+        }
+    } else if (ui_.post_process_type == 2) { // Grayscale
+        #pragma omp parallel for
+        for (int i = 0; i < width_ * height_; ++i) {
+            int idx = i * 4;
+            unsigned char gray = static_cast<unsigned char>(
+                0.299 * image_data_[idx] + 0.587 * image_data_[idx + 1] + 0.114 * image_data_[idx + 2]);
+            image_data_[idx] = gray;
+            image_data_[idx + 1] = gray;
+            image_data_[idx + 2] = gray;
+        }
+    } else if (ui_.post_process_type == 3) { // Invert
+         #pragma omp parallel for
+        for (int i = 0; i < width_ * height_; ++i) {
+            int idx = i * 4;
+            image_data_[idx] = 255 - image_data_[idx];
+            image_data_[idx + 1] = 255 - image_data_[idx + 1];
+            image_data_[idx + 2] = 255 - image_data_[idx + 2];
+        }
+    }
 }
 
 void Application::render_ui() {
@@ -287,6 +366,15 @@ void Application::render_ui() {
     
     if (ui_.samples_per_pixel < 1) ui_.samples_per_pixel = 1;
     ImGui::TextDisabled("(Higher SPP = Less Noise, More Time)");
+
+    ImGui::Separator();
+    ImGui::Text("5. Post Processing");
+    ImGui::SliderFloat("Gamma", &ui_.gamma, 0.1f, 5.0f);
+    ImGui::Checkbox("Enable Filters", &ui_.enable_post_process);
+    if (ui_.enable_post_process) {
+        const char* pp_types[] = { "Simple Denoise (Blur)", "Sharpen", "Grayscale", "Invert Colors" };
+        ImGui::Combo("Filter Type", &ui_.post_process_type, pp_types, IM_ARRAYSIZE(pp_types));
+    }
 
     ImGui::Separator();
 
