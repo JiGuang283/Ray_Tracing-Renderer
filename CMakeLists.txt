@@ -69,16 +69,10 @@ file(GLOB IMGUI_SOURCES
 )
 source_group("Header Files" FILES ${HEADERS})
 
-# Add an executable with the above sources
-# CMakeLists.txt
-
-# ... (前面的内容保持不变)
-
 # Recursively find all header and source files in src and its subdirectories
 file(GLOB_RECURSE HEADERS ${PROJECT_SOURCE_DIR}/src/*.h)
 file(GLOB_RECURSE SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp)
 
-# 新增：找到 ImGui 的源文件
 file(GLOB IMGUI_SOURCES
 		${PROJECT_SOURCE_DIR}/libs/imgui/*.cpp
 		${PROJECT_SOURCE_DIR}/libs/imgui/backends/*.cpp
