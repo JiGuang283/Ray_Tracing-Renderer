@@ -426,6 +426,93 @@ shared_ptr<hittable> pbr_materials_gallery() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
+shared_ptr<hittable> pbr_reference_scene() {
+    hittable_list world;
+
+    auto ground_mat = make_shared<lambertian>(color(0.2, 0.2, 0.2));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    struct MaterialInfo {
+        color albedo;
+        double metallic;
+        double roughness;
+        const char *name;
+    };
+
+    // 1. Metals
+    std::vector<MaterialInfo> metals = {
+        {color(1.000, 0.766, 0.336), 1.0, 0.2, "Gold"},
+        {color(0.955, 0.638, 0.538), 1.0, 0.2, "Copper"},
+        {color(0.560, 0.570, 0.580), 1.0, 0.3, "Iron"},
+        {color(0.913, 0.922, 0.924), 1.0, 0.1, "Aluminum"}};
+
+    // 2. Non-Metals
+    std::vector<MaterialInfo> non_metals = {
+        {color(1.0, 0.1, 0.1), 0.0, 0.1, "Red Plastic"},
+        {color(0.1, 0.1, 1.0), 0.0, 0.8, "Blue Rubber"},
+        {color(1.0, 1.0, 1.0), 0.0, 0.02, "Water/Ice"},
+        {color(0.02, 0.02, 0.02), 0.0, 0.9, "Charcoal"},
+        {color(0.81, 0.81, 0.81), 0.0, 0.9, "Fresh Snow"}};
+
+    // 3. Roughness Gradient (Gold)
+    std::vector<double> roughness_gradient = {0.0, 0.2, 0.4, 0.6, 0.8, 1.0};
+
+    double spacing = 2.5;
+    double row_z = 0.0;
+
+    // Row 1: Metals
+    row_z = -5.0;
+    double start_x = -((metals.size() - 1) * spacing) / 2.0;
+    for (size_t i = 0; i < metals.size(); ++i) {
+        auto &info = metals[i];
+        auto mat = make_shared<PBRMaterial>(
+            make_shared<solid_color>(info.albedo),
+            make_shared<solid_color>(info.roughness, info.roughness,
+                                     info.roughness),
+            make_shared<solid_color>(info.metallic, info.metallic,
+                                     info.metallic));
+        world.add(make_shared<sphere>(point3(start_x + i * spacing, 1, row_z),
+                                      1.0, mat));
+    }
+
+    // Row 2: Non-Metals
+    row_z = 0.0;
+    start_x = -((non_metals.size() - 1) * spacing) / 2.0;
+    for (size_t i = 0; i < non_metals.size(); ++i) {
+        auto &info = non_metals[i];
+        auto mat = make_shared<PBRMaterial>(
+            make_shared<solid_color>(info.albedo),
+            make_shared<solid_color>(info.roughness, info.roughness,
+                                     info.roughness),
+            make_shared<solid_color>(info.metallic, info.metallic,
+                                     info.metallic));
+        world.add(make_shared<sphere>(point3(start_x + i * spacing, 1, row_z),
+                                      1.0, mat));
+    }
+
+    // Row 3: Roughness Gradient (Gold)
+    row_z = 5.0;
+    start_x = -((roughness_gradient.size() - 1) * spacing) / 2.0;
+    color gold_albedo(1.000, 0.766, 0.336);
+    for (size_t i = 0; i < roughness_gradient.size(); ++i) {
+        double r = roughness_gradient[i];
+        auto mat = make_shared<PBRMaterial>(
+            make_shared<solid_color>(gold_albedo),
+            make_shared<solid_color>(r, r, r),
+            make_shared<solid_color>(1.0, 1.0, 1.0)); // Metallic = 1.0
+        world.add(make_shared<sphere>(point3(start_x + i * spacing, 1, row_z),
+                                      1.0, mat));
+    }
+
+    // Lights
+    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
+    world.add(make_shared<sphere>(point3(0, 30, 10), 8, light_mat));
+    world.add(make_shared<sphere>(point3(-20, 10, 20), 2, light_mat));
+    world.add(make_shared<sphere>(point3(20, 10, 20), 2, light_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 SceneConfig select_scene(int scene_id) {
     SceneConfig config;
 
@@ -522,7 +609,6 @@ SceneConfig select_scene(int scene_id) {
 
     case 12:
         config.world = pbr_spheres_grid();
-        config.background = color(0.70, 0.80, 1.00);
         config.aspect_ratio = 1.0;
         config.image_width = 800;
         config.samples_per_pixel = 500;
@@ -540,6 +626,17 @@ SceneConfig select_scene(int scene_id) {
         config.samples_per_pixel = 1000;
         config.background = color(0.1, 0.1, 0.1);
         config.lookfrom = point3(0, 10, 20);
+        config.lookat = point3(0, 0, 0);
+        config.vfov = 30.0;
+        break;
+
+    case 14:
+        config.world = pbr_reference_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 1000;
+        config.samples_per_pixel = 5000;
+        config.background = color(0.05, 0.05, 0.05);
+        config.lookfrom = point3(0, 15, 25);
         config.lookat = point3(0, 0, 0);
         config.vfov = 30.0;
         break;
