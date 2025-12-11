@@ -8,8 +8,7 @@
 #include <deque>
 #include <mutex>
 
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
+#include "image_ops.h"
 
 #include "camera.h"
 #include "imgui.h"
@@ -189,48 +188,7 @@ void Application::start_render(bool resume) {
 }
 
 void Application::save_image() const {
-    if (image_data_.empty() || width_ == 0 || height_ == 0) {
-        std::cerr << "No image data to save." << std::endl;
-        return;
-    }
-
-    std::string filename = "output";
-    
-    switch (ui_.save_format_idx) {
-
-        case 0: { // PPM
-            filename += ".ppm";
-            std::ofstream ofs(filename);
-            ofs << "P3\n" << width_ << " " << height_ << "\n255\n";
-            for (int i = 0; i < width_ * height_; ++i) {
-                ofs << static_cast<int>(image_data_[i * 4 + 0]) << " "
-                    << static_cast<int>(image_data_[i * 4 + 1]) << " "
-                    << static_cast<int>(image_data_[i * 4 + 2]) << "\n";
-            }
-            ofs.close();
-            break;
-        }
-
-        case 1: // PNG
-            filename += ".png";
-            stbi_write_png(filename.c_str(), width_, height_, 4, image_data_.data(), width_ * 4);
-            break;
-
-        case 2: // BMP
-            filename += ".bmp";
-            stbi_write_bmp(filename.c_str(), width_, height_, 4, image_data_.data());
-            break;
-
-        case 3: // JPG
-            filename += ".jpg";
-            stbi_write_jpg(filename.c_str(), width_, height_, 4, image_data_.data(), 90);
-            break;
-
-        default:
-            std::cerr << "Unknown format" << std::endl;
-            return;
-    }
-    std::cout << "Image saved to " << filename << std::endl;
+    ImageOps::save_image_to_disk(image_data_, width_, height_, ui_.save_format_idx);
 }
 
 void Application::update_display_from_buffer() {
@@ -248,7 +206,7 @@ void Application::update_display_from_buffer() {
             if (ui_.tone_mapping_type == 1) { // Reinhard
                 c = c / (c + vec3(1.0, 1.0, 1.0));
             } else if (ui_.tone_mapping_type == 2) { // ACES
-                c = ACESFilm(c);
+                c = ImageOps::ACESFilm(c);
             }
             int idx = (j * width_ + i) * 4;
             // Gamma Correction
@@ -267,97 +225,7 @@ void Application::update_display_from_buffer() {
 }
 
 void Application::apply_post_processing() {
-    if (image_data_.empty()) {
-        return;
-    }
-
-    auto get_idx = [&](int x, int y) {
-        x = std::max(0, std::min(x, width_ - 1));
-        y = std::max(0, std::min(y, height_ - 1));
-        return (y * width_ + x) * 4;
-    };
-
-    if (ui_.post_process_type == 0 || ui_.post_process_type == 1) {
-        std::vector<unsigned char> temp_data = image_data_;
-        
-        #pragma omp parallel for
-        for (int y = 0; y < height_; ++y) {
-            for (int x = 0; x < width_; ++x) {
-                int r = 0, g = 0, b = 0;
-                int weight_sum = 0;
-
-                int kernel[3][3];
-                if (ui_.post_process_type == 0) {
-                    for(int i=0;i<3;i++) for(int j=0;j<3;j++) kernel[i][j] = 1;
-                    weight_sum = 9;
-                } else {
-                    int s_k[3][3] = {{0, -1, 0}, {-1, 5, -1}, {0, -1, 0}};
-                    for(int i=0;i<3;i++) for(int j=0;j<3;j++) kernel[i][j] = s_k[i][j];
-                    weight_sum = 1;
-                }
-
-                for (int ky = -1; ky <= 1; ++ky) {
-                    for (int kx = -1; kx <= 1; ++kx) {
-                        int idx = get_idx(x + kx, y + ky);
-                        int w = kernel[ky + 1][kx + 1];
-                        r += temp_data[idx + 0] * w;
-                        g += temp_data[idx + 1] * w;
-                        b += temp_data[idx + 2] * w;
-                    }
-                }
-                
-                int current_idx = (y * width_ + x) * 4;
-                image_data_[current_idx + 0] = static_cast<unsigned char>(std::max(0, std::min(255, r / weight_sum)));
-                image_data_[current_idx + 1] = static_cast<unsigned char>(std::max(0, std::min(255, g / weight_sum)));
-                image_data_[current_idx + 2] = static_cast<unsigned char>(std::max(0, std::min(255, b / weight_sum)));
-            }
-        }
-    } else if (ui_.post_process_type == 2) {
-        #pragma omp parallel for
-        for (int i = 0; i < width_ * height_; ++i) {
-            int idx = i * 4;
-            unsigned char gray = static_cast<unsigned char>(
-                0.299 * image_data_[idx] + 0.587 * image_data_[idx + 1] + 0.114 * image_data_[idx + 2]);
-                image_data_[idx] = gray;
-                image_data_[idx + 1] = gray;
-                image_data_[idx + 2] = gray;
-        }
-    } else if (ui_.post_process_type == 3) {
-         #pragma omp parallel for
-        for (int i = 0; i < width_ * height_; ++i) {
-            int idx = i * 4;
-            image_data_[idx] = 255 - image_data_[idx];
-            image_data_[idx + 1] = 255 - image_data_[idx + 1];
-            image_data_[idx + 2] = 255 - image_data_[idx + 2];
-        }
-    }else if (ui_.post_process_type == 4) {
-        // Median Filter (Despeckle)
-        std::vector<unsigned char> temp_data = image_data_;
-        #pragma omp parallel for
-        for (int y = 0; y < height_; ++y) {
-            for (int x = 0; x < width_; ++x) {
-                std::vector<unsigned char> rs, gs, bs;
-                rs.reserve(9); gs.reserve(9); bs.reserve(9);
-
-                for (int ky = -1; ky <= 1; ++ky) {
-                    for (int kx = -1; kx <= 1; ++kx) {
-                        int idx = get_idx(x + kx, y + ky);
-                        rs.push_back(temp_data[idx + 0]);
-                        gs.push_back(temp_data[idx + 1]);
-                        bs.push_back(temp_data[idx + 2]);
-                    }
-                }
-                std::sort(rs.begin(), rs.end());
-                std::sort(gs.begin(), gs.end());
-                std::sort(bs.begin(), bs.end());
-
-                int current_idx = (y * width_ + x) * 4;
-                image_data_[current_idx + 0] = rs[4]; // Median
-                image_data_[current_idx + 1] = gs[4];
-                image_data_[current_idx + 2] = bs[4];
-            }
-        }
-    }
+    ImageOps::apply_post_processing(image_data_, width_, height_, ui_.post_process_type);
 }
 
 void Application::render_ui() {

@@ -26,6 +26,7 @@ include_directories(${PROJECT_SOURCE_DIR}/src/external)
 include_directories(${PROJECT_SOURCE_DIR}/src/external/imgui)
 include_directories(${PROJECT_SOURCE_DIR}/src/external/imgui/backends)
 include_directories(${PROJECT_SOURCE_DIR}/src/app)
+include_directories(${PROJECT_SOURCE_DIR}/src/utils)
 
 ############################################################
 # Windows or Linux options
