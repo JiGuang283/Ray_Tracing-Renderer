@@ -12,6 +12,8 @@
 #include "scenes.h"
 #include "simd_rgba.h"
 
+#include <future>
+
 namespace RenderConfig {
     constexpr int kMaxDepth = 50; // 默认最大递归深度
     constexpr double kShutterOpen = 0.0;  // 默认 shutter 打开时间
@@ -246,7 +248,6 @@ void Application::update_display_from_buffer() {
     win_app_->markCpuStart(); // CPU 阶段开始
 
     const auto &pixels = render_buffer_->get_data();
-    float inv_gamma = 1.0f / ui_.gamma;
 
     // tone map helper
     auto tone_map = [&](vec3 c) {
@@ -260,52 +261,57 @@ void Application::update_display_from_buffer() {
         }
     };
 
-    for (int j = 0; j < height_; ++j) {
-        int i = 0;
-        for (; i + 7 < width_; i += 8) {
-            float r[8], g[8], b[8];
-            // 标量做 tone mapping + gamma + clamp 到 [0,1]
-            for (int k = 0; k < 8; ++k) {
-                vec3 c = pixels[height_ - 1 - j][i + k];
-                c = tone_map(c);
-                float rr = std::max(0.0f, std::min(1.0f, static_cast<float>(c.x())));
-                float gg = std::max(0.0f, std::min(1.0f, static_cast<float>(c.y())));
-                float bb = std::max(0.0f, std::min(1.0f, static_cast<float>(c.z())));
-                // Gamma 修正
-                r[k] = ImageOps::gamma_lookup(rr);
-                g[k] = ImageOps::gamma_lookup(gg);
-                b[k] = ImageOps::gamma_lookup(bb);
+    int nthreads = std::max(1u, std::thread::hardware_concurrency());
+    int rows_per_task = (height_ + nthreads - 1) / nthreads;
+
+    auto process_rows = [&](int y0, int y1) {
+        for (int j = y0; j < y1; ++j) {
+            int i = 0;
+            for (; i + 7 < width_; i += 8) {
+                float r[8], g[8], b[8];
+                for (int k = 0; k < 8; ++k) {
+                    vec3 c = pixels[height_ - 1 - j][i + k];
+                    c = tone_map(c);
+                    float rr = clamp_compat(static_cast<float>(c.x()), 0.0f, 1.0f);
+                    float gg = clamp_compat(static_cast<float>(c.y()), 0.0f, 1.0f);
+                    float bb = clamp_compat(static_cast<float>(c.z()), 0.0f, 1.0f);
+                    r[k] = ImageOps::gamma_lookup(rr);
+                    g[k] = ImageOps::gamma_lookup(gg);
+                    b[k] = ImageOps::gamma_lookup(bb);
+                }
+                uint8_t* dst = &image_data_[(j * width_ + i) * 4];
+                #if defined(__AVX2__)
+                    store_rgba8_avx2(r, g, b, dst);
+                #elif defined(__SSE2__)
+                    store_rgba8_sse2(r, g, b, dst);
+                #else
+                    store_rgba8_scalar(r, g, b, dst);
+                #endif
             }
-
-            uint8_t* dst = &image_data_[ (j * width_ + i) * 4 ];
-            #if defined(__AVX2__)
-                store_rgba8_avx2(r, g, b, dst);
-            #elif defined(__SSE2__)
-                store_rgba8_sse2(r, g, b, dst);
-            #else
-                store_rgba8_scalar(r, g, b, dst);
-            #endif
+            for (; i < width_; ++i) {
+                vec3 c = pixels[height_ - 1 - j][i];
+                c = tone_map(c);
+                float r1 = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.x()), 0.0f, 1.0f));
+                float g1 = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.y()), 0.0f, 1.0f));
+                float b1 = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.z()), 0.0f, 1.0f));
+                int idx = (j * width_ + i) * 4;
+                image_data_[idx + 0] = static_cast<unsigned char>(r1 * 255.0f);
+                image_data_[idx + 1] = static_cast<unsigned char>(g1 * 255.0f);
+                image_data_[idx + 2] = static_cast<unsigned char>(b1 * 255.0f);
+                image_data_[idx + 3] = 255;
+            }
         }
+    };
 
-        // 尾部不足 8 像素，走标量
-        for (; i < width_; ++i) {
-            vec3 c = pixels[height_ - 1 - j][i];
-            c = tone_map(c);
-            float r1 = std::max(0.0f, std::min(1.0f, static_cast<float>(c.x())));
-            float g1 = std::max(0.0f, std::min(1.0f, static_cast<float>(c.y())));
-            float b1 = std::max(0.0f, std::min(1.0f, static_cast<float>(c.z())));
-
-            r1 = ImageOps::gamma_lookup(r1);
-            g1 = ImageOps::gamma_lookup(g1);
-            b1 = ImageOps::gamma_lookup(b1);
-
-            int idx = (j * width_ + i) * 4;
-            image_data_[idx + 0] = static_cast<unsigned char>(r1 * 255.0f);
-            image_data_[idx + 1] = static_cast<unsigned char>(g1 * 255.0f);
-            image_data_[idx + 2] = static_cast<unsigned char>(b1 * 255.0f);
-            image_data_[idx + 3] = 255;
-        }
+    std::vector<std::future<void>> tasks;
+    tasks.reserve(nthreads);
+    for (int t = 0; t < nthreads; ++t) {
+        int y0 = t * rows_per_task;
+        int y1 = std::min(height_, y0 + rows_per_task);
+        if (y0 >= y1) break;
+        tasks.emplace_back(std::async(std::launch::async, process_rows, y0, y1));
     }
+    for (auto& f : tasks) f.get();
 
     if (ui_.enable_post_process) {
         apply_post_processing();
