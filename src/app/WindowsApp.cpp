@@ -37,8 +37,10 @@ bool WindowsApp::setup(int width, int height, std::string title) {
     // 创建窗口
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     m_window_handle = SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, window_flags);
-    if (!m_window_handle) return false;
-
+    // 创建窗口失败
+    if (!m_window_handle) {
+        return false;
+    }
     // 设置缩放质量 (在创建纹理前设置)
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
 
@@ -113,6 +115,8 @@ void WindowsApp::processEvent() {
 }
 
 void WindowsApp::updateTexture(const unsigned char *rgba) const {
+    auto t0 = Clock::now();
+
     void* pixels = nullptr;
     int pitch = 0;
     if (SDL_LockTexture(m_texture, nullptr, &pixels, &pitch) == 0) {
@@ -125,6 +129,8 @@ void WindowsApp::updateTexture(const unsigned char *rgba) const {
         }
         SDL_UnlockTexture(m_texture);
     }
+    auto t1 = Clock::now();
+    const_cast<WindowsApp*>(this)->m_timings.upload_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 }
 
 void WindowsApp::beginRender() {
@@ -135,6 +141,8 @@ void WindowsApp::beginRender() {
 }
 
 void WindowsApp::endRender() const {
+    auto t0 = Clock::now();
+
     // ImGui 准备渲染数据
     ImGui::Render();
     // 清除屏幕（黑色背景）
@@ -148,6 +156,9 @@ void WindowsApp::endRender() const {
     ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), m_renderer);
     // 交换缓冲区显示
     SDL_RenderPresent(m_renderer);
+
+    auto t1 = Clock::now();
+    const_cast<WindowsApp*>(this)->m_timings.render_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 }
 
 void WindowsApp::cleanup() const {
@@ -165,5 +176,13 @@ void WindowsApp::cleanup() const {
         SDL_DestroyWindow(m_window_handle);
     }
     SDL_Quit();
+}
+
+void WindowsApp::markCpuStart() {
+    m_cpu_start = Clock::now();
+}
+void WindowsApp::markCpuEnd() {
+    auto t1 = Clock::now();
+    m_timings.cpu_ms = std::chrono::duration<double, std::milli>(t1 - m_cpu_start).count();
 }
 

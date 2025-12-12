@@ -60,38 +60,39 @@ struct UIState {
 };
 
 class Application {
-public:
-    Application(int initial_scene_id);
-    ~Application();
+    public:
+        Application(int initial_scene_id);
+        ~Application();
 
-    bool init();
-    void run();
+        bool init();
+        void run();
 
-private:
-    void start_render(bool resume = false); // 启动渲染 (支持继续)
-    void stop_render(); // 停止渲染
-    void pause_render(); // 暂停渲染
-    
-    void save_image() const;   // 保存图片
-    void update_display_from_buffer(); // 从缓冲区更新显示
-    void apply_post_processing(); // 应用后处理
+    private:
+        void start_render(bool resume = false); // 启动渲染 (支持继续)
+        void stop_render(); // 停止渲染
+        void pause_render(); // 暂停渲染
 
-    void render_ui(); // 渲染UI
-    void log(const std::string& msg); // 记录日志
+        void save_image() const;   // 保存图片
+        void update_display_from_buffer(); // 从缓冲区更新显示
+        void apply_post_processing(); // 应用后处理
 
-private:
-    UIState ui_;  // UI状态
-    WindowsApp::ptr win_app_;  // 窗口
-    Renderer renderer_; // 渲染器
-    std::shared_ptr<RenderBuffer> render_buffer_; // 渲染缓冲区
-    std::thread render_thread_; // 渲染线程
-    std::vector<unsigned char> image_data_; // 图片数据
-    int width_ = 0, height_ = 0; // 窗口宽高
 
-    std::atomic<bool> join_pending_ = {false};
+        void render_ui(); // 渲染UI
+        void log(const std::string& msg); // 记录日志
 
-    std::deque<std::string> logs_; // 日志队列
-    std::mutex log_mutex_; // 日志锁
+    private:
+        UIState ui_;  // UI状态
+        WindowsApp::ptr win_app_;  // 窗口
+        Renderer renderer_; // 渲染器
+        std::shared_ptr<RenderBuffer> render_buffer_; // 渲染缓冲区
+        std::thread render_thread_; // 渲染线程
+        std::vector<unsigned char> image_data_; // 图片数据
+        int width_ = 0, height_ = 0; // 窗口宽高
+
+        std::atomic<bool> join_pending_ = {false};
+
+        std::deque<std::string> logs_; // 日志队列
+        std::mutex log_mutex_; // 日志锁
 };
 
 #endif //APPLICATION_H

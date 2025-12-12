@@ -10,6 +10,9 @@
 
 namespace ImageOps {
 
+    std::vector<float> gamma_lut_;
+    float gamma_lut_inv_size_ = 0.f;
+
     vec3 ACESFilm(vec3 x) {
         float a = 2.51f;
         float b = 0.03f;
@@ -140,5 +143,27 @@ namespace ImageOps {
                 }
             }
         }
+    }
+
+    void build_gamma_lut(float gamma, int lut_size) {
+        const float safe_gamma = std::max(gamma, 1e-6f);
+        gamma_lut_.resize(lut_size + 1);
+        gamma_lut_inv_size_ = 1.0f / lut_size;
+        float inv_gamma = 1.0f / safe_gamma;
+        for (int i = 0; i <= lut_size; ++i) {
+            float x = static_cast<float>(i) * gamma_lut_inv_size_;
+            gamma_lut_[i] = std::pow(x, inv_gamma);
+        }
+    }
+
+    float gamma_lookup(float x) {
+        if (gamma_lut_.empty()) return clamp_compat(x, 0.0f, 1.0f);
+        x = clamp_compat(x, 0.0f, 1.0f);
+        const int n = static_cast<int>(gamma_lut_.size());
+        float fidx = x * (n - 1);
+        int idx = static_cast<int>(fidx);
+        if (idx >= n - 1) return gamma_lut_.back();
+        float t = fidx - idx;
+        return gamma_lut_[idx] * (1.0f - t) + gamma_lut_[idx + 1] * t;
     }
 }

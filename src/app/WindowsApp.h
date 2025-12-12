@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <string>
+#include <chrono>
 
 class WindowsApp final {
 
@@ -35,6 +36,18 @@ class WindowsApp final {
 
         static WindowsApp::ptr getInstance(int width, int height, const std::string &title);
 
+        // 计时接口
+        void markCpuStart();
+        void markCpuEnd();
+
+        struct FrameTimings {
+            double cpu_ms   = 0.0;
+            double upload_ms= 0.0;
+            double render_ms= 0.0;
+        };
+
+        const FrameTimings& timings() const { return m_timings; }
+
     private:
 
         WindowsApp() = default;
@@ -43,7 +56,6 @@ class WindowsApp final {
         void recreateTexture(int width, int height);
 
     private:
-
         // Screen size
         int m_screen_width = 0;
         int m_screen_height = 0;
@@ -58,6 +70,11 @@ class WindowsApp final {
 
         // Singleton pattern
         static WindowsApp::ptr m_instance;
+
+        using Clock = std::chrono::steady_clock;
+
+        FrameTimings m_timings{};
+        Clock::time_point m_cpu_start{};
 };
 
 #endif

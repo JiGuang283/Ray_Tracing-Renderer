@@ -1,22 +1,21 @@
-#include "Application.h"
-
 #include <cmath>
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <deque>
 #include <mutex>
-#include "image_ops.h"
 
+#include "Application.h"
+#include "image_ops.h"
 #include "camera.h"
 #include "imgui.h"
 #include "scenes.h"
 #include "simd_rgba.h"
 
 namespace RenderConfig {
-    constexpr int kMaxDepth = 50;
-    constexpr double kShutterOpen = 0.0;
-    constexpr double kShutterClose = 1.0;
+    constexpr int kMaxDepth = 50; // 默认最大递归深度
+    constexpr double kShutterOpen = 0.0;  // 默认 shutter 打开时间
+    constexpr double kShutterClose = 1.0; // 默认 shutter 关闭时间
 } // namespace RenderConfig
 
 
@@ -42,6 +41,8 @@ bool Application::init() {
     ui_.max_depth = RenderConfig::kMaxDepth;
     ui_.gamma = 2.0f; // Default Gamma
 
+    ImageOps::build_gamma_lut(ui_.gamma, 4096); //初始化 LUT
+
     win_app_ = WindowsApp::getInstance(width_, height_, "Ray_Tracing-Renderer");
     if (!win_app_) {
         std::cerr << "Error: failed to create window" << std::endl;
@@ -57,7 +58,11 @@ bool Application::init() {
 
 void Application::run() {
     double last_texture_update_time = 0.0;
-    const double texture_update_interval = 1.0 / 30.0;
+    constexpr double texture_update_interval = 1.0 / 30.0;
+
+    // 历史与上次打印时间
+    std::deque<double> cpu_hist, upload_hist, render_hist;
+    double last_report = 0.0;
 
     while (!win_app_->shouldWindowClose()) { // Render loop
         win_app_->processEvent();
@@ -89,6 +94,28 @@ void Application::run() {
             }
         }
 
+        const auto& t = win_app_->timings();
+        auto push_hist = [](std::deque<double>& q, double v) {
+            const size_t N = 60;
+            q.push_back(v);
+            if (q.size() > N) q.pop_front();
+        };
+        auto avg = [](const std::deque<double>& q) {
+            double s = 0; for (double v : q) s += v;
+            return q.empty() ? 0.0 : s / q.size();
+        };
+
+        push_hist(cpu_hist, t.cpu_ms);
+        push_hist(upload_hist, t.upload_ms);
+        push_hist(render_hist, t.render_ms);
+
+        double now = ImGui::GetTime();
+        if (now - last_report >= 1.0) { // 每秒打印一次
+            std::cout << "cpu_avg=" << avg(cpu_hist) << " ms, "
+                      << "upload_avg=" << avg(upload_hist) << " ms, "
+                      << "render_avg=" << avg(render_hist) << " ms\n";
+            last_report = now;
+        }
 
         win_app_->beginRender();
         render_ui();
@@ -134,6 +161,7 @@ void Application::start_render(bool resume) {
     ui_.is_paused = false;
 
     if (resume) {
+        // 检查分辨率是否一致
         if (!render_buffer_ || render_buffer_->get_width() != ui_.image_width) {
             resume = false;
             log("Cannot resume: buffer invalid or resolution changed. Starting new render.");
@@ -160,29 +188,35 @@ void Application::start_render(bool resume) {
         log("Resuming render...");
     }
 
+    // 创建相机
     auto cam = std::make_shared<camera>(
-        config.lookfrom, config.lookat, config.vup, 
-        ui_.vfov, 
-        ratio_val, 
-        ui_.aperture, 
-        ui_.focus_dist, 
+        config.lookfrom, config.lookat, config.vup,
+        ui_.vfov,
+        ratio_val,
+        ui_.aperture,
+        ui_.focus_dist,
         RenderConfig::kShutterOpen, RenderConfig::kShutterClose);
 
+    // 选择积分器
     switch (ui_.integrator_idx) {
         case 0:
-            renderer_.set_integrator(ui_.integrator);
+            renderer_.set_integrator(ui_.integrator); // Path
             break;
 
         case 1:
-            renderer_.set_integrator(ui_.rrIntegrator);
+            renderer_.set_integrator(ui_.rrIntegrator); // RR
             break;
 
         case 2:
-            renderer_.set_integrator(ui_.pbrIntegrator);
+            renderer_.set_integrator(ui_.pbrIntegrator); // PBR
+            break;
+
+        case 3:
+            renderer_.set_integrator(ui_.misIntegrator); // MIS
             break;
 
         default:
-            renderer_.set_integrator(ui_.integrator);
+            renderer_.set_integrator(ui_.integrator); //默认 Path
             break;
     }
 
@@ -209,6 +243,8 @@ void Application::update_display_from_buffer() {
     if (!render_buffer_ || render_buffer_->get_width() != width_ || render_buffer_->get_height() != height_) {
         return;
     }
+    win_app_->markCpuStart(); // CPU 阶段开始
+
     const auto &pixels = render_buffer_->get_data();
     float inv_gamma = 1.0f / ui_.gamma;
 
@@ -220,7 +256,7 @@ void Application::update_display_from_buffer() {
         case 2: // ACES
             return ImageOps::ACESFilm(c);
         default:
-            return c;
+            return c; // NONE
         }
     };
 
@@ -232,13 +268,13 @@ void Application::update_display_from_buffer() {
             for (int k = 0; k < 8; ++k) {
                 vec3 c = pixels[height_ - 1 - j][i + k];
                 c = tone_map(c);
-                float rr = std::max(0.0f, std::min(1.0f, float(c.x())));
-                float gg = std::max(0.0f, std::min(1.0f, float(c.y())));
-                float bb = std::max(0.0f, std::min(1.0f, float(c.z())));
+                float rr = std::max(0.0f, std::min(1.0f, static_cast<float>(c.x())));
+                float gg = std::max(0.0f, std::min(1.0f, static_cast<float>(c.y())));
+                float bb = std::max(0.0f, std::min(1.0f, static_cast<float>(c.z())));
                 // Gamma 修正
-                r[k] = std::pow(rr, inv_gamma);
-                g[k] = std::pow(gg, inv_gamma);
-                b[k] = std::pow(bb, inv_gamma);
+                r[k] = ImageOps::gamma_lookup(rr);
+                g[k] = ImageOps::gamma_lookup(gg);
+                b[k] = ImageOps::gamma_lookup(bb);
             }
 
             uint8_t* dst = &image_data_[ (j * width_ + i) * 4 ];
@@ -255,13 +291,13 @@ void Application::update_display_from_buffer() {
         for (; i < width_; ++i) {
             vec3 c = pixels[height_ - 1 - j][i];
             c = tone_map(c);
-            float r1 = std::max(0.0f, std::min(1.0f, float(c.x())));
-            float g1 = std::max(0.0f, std::min(1.0f, float(c.y())));
-            float b1 = std::max(0.0f, std::min(1.0f, float(c.z())));
+            float r1 = std::max(0.0f, std::min(1.0f, static_cast<float>(c.x())));
+            float g1 = std::max(0.0f, std::min(1.0f, static_cast<float>(c.y())));
+            float b1 = std::max(0.0f, std::min(1.0f, static_cast<float>(c.z())));
 
-            r1 = std::pow(r1, inv_gamma);
-            g1 = std::pow(g1, inv_gamma);
-            b1 = std::pow(b1, inv_gamma);
+            r1 = ImageOps::gamma_lookup(r1);
+            g1 = ImageOps::gamma_lookup(g1);
+            b1 = ImageOps::gamma_lookup(b1);
 
             int idx = (j * width_ + i) * 4;
             image_data_[idx + 0] = static_cast<unsigned char>(r1 * 255.0f);
@@ -274,6 +310,9 @@ void Application::update_display_from_buffer() {
     if (ui_.enable_post_process) {
         apply_post_processing();
     }
+
+    win_app_->markCpuEnd(); // CPU 阶段结束
+
     win_app_->updateTexture(image_data_.data());
 }
 
@@ -299,9 +338,9 @@ void Application::render_ui() {
 
     // 定义布局参数
     float control_width = 450.0f; // 控制面板宽度
-    
+
     ImVec2 avail = ImGui::GetContentRegionAvail();
-    
+
     // 限制日志区域高度范围
     float min_log_h = 50.0f;
     float max_log_h = avail.y - 100.0f;
@@ -310,7 +349,7 @@ void Application::render_ui() {
 
     float splitter_height = 5.0f;
     float top_height = avail.y - ui_.log_height - splitter_height;
-    float image_w = avail.x - control_width; 
+    float image_w = avail.x - control_width;
 
     // --- Top Area ---
     ImGui::BeginChild("TopArea", ImVec2(0, top_height), false);
@@ -346,13 +385,13 @@ void Application::render_ui() {
             double current_time = ImGui::GetTime();
             double elapsed = current_time - ui_.render_start_time;
             double remaining = (elapsed / progress) - elapsed;
-            
+
             if (remaining < 0) remaining = 0;
 
             int r_hour = static_cast<int>(remaining) / 3600;
             int r_min = (static_cast<int>(remaining) % 3600) / 60;
             int r_sec = static_cast<int>(remaining) % 60;
-            
+
             if (r_hour > 0)
                 ImGui::Text("ETA: %dh %dm %ds", r_hour, r_min, r_sec);
             else
@@ -377,7 +416,7 @@ void Application::render_ui() {
         "pbr_reference_scene", "point_light_scene", "mis_demo"
     };
     ImGui::Text("1. Select Scene");
-    
+
     int old_scene = ui_.scene_id;
     if (ImGui::Combo("##Scene", &ui_.scene_id, scene_names, IM_ARRAYSIZE(scene_names))) {
         if (ui_.scene_id != old_scene) {
@@ -391,7 +430,7 @@ void Application::render_ui() {
 
     ImGui::Separator();
     ImGui::Text("2. Camera Settings");
-    
+
     ImGui::SliderFloat("FOV", &ui_.vfov, 1.0f, 120.0f);
     ImGui::SliderFloat("Aperture", &ui_.aperture, 0.0f, 2.0f);
     ImGui::SliderFloat("Focus Dist", &ui_.focus_dist, 0.1f, 50.0f);
@@ -417,7 +456,7 @@ void Application::render_ui() {
 
     ImGui::InputInt("SPP (Samples)", &ui_.samples_per_pixel, 10, 100);
     ImGui::SliderInt("Max Depth", &ui_.max_depth, 1, 100);
-    
+
     if (ui_.samples_per_pixel < 1) ui_.samples_per_pixel = 1;
     ImGui::TextDisabled("(Higher SPP = Less Noise, More Time)");
 
@@ -435,6 +474,7 @@ void Application::render_ui() {
 
     if (ImGui::SliderFloat("Gamma", &ui_.gamma, 0.1f, 5.0f)) {
         ui_.need_display_update = true;
+        ImageOps::build_gamma_lut(ui_.gamma, 4096); // 新增：重建 LUT
     }
 
     if (ImGui::Checkbox("Enable Filters", &ui_.enable_post_process)) {
@@ -473,7 +513,7 @@ void Application::render_ui() {
     }
 
     ImGui::Separator();
-    
+
     const char* formats[] = { "PPM (Raw)", "PNG (Lossless)", "BMP (Bitmap)", "JPG (Compressed)" };
     ImGui::Combo("Format", &ui_.save_format_idx, formats, IM_ARRAYSIZE(formats));
 
