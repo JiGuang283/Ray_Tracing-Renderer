@@ -20,7 +20,7 @@ class Renderer {
         int samples_per_pixel = 10;
     };
 
-    Renderer() : m_is_rendering(false) {
+    Renderer() : m_is_rendering(false), m_was_cancelled(false), m_processed_tiles(), m_total_tiles(0) {
     }
 
     void set_integrator(std::shared_ptr<Integrator> integrator) {
@@ -31,6 +31,8 @@ class Renderer {
                 const color &background, RenderBuffer &target_buffer,
                 const std::vector<shared_ptr<Light>> &lights = {}) {
         m_is_rendering = true;
+        m_was_cancelled = false;
+        m_processed_tiles = 0; // 重置进度
 
         auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -42,6 +44,8 @@ class Renderer {
         int tiles_x = (image_width + TILE_SIZE - 1) / TILE_SIZE;
         int tiles_y = (image_height + TILE_SIZE - 1) / TILE_SIZE;
         int total_tiles = tiles_x * tiles_y;
+
+        m_total_tiles = total_tiles;
 
         std::atomic<int> next_tile_index(0);
 
@@ -82,6 +86,7 @@ class Renderer {
                                               m_settings.samples_per_pixel);
                     }
                 }
+                ++m_processed_tiles; // 更新已处理的片数
             }
         };
 
@@ -97,8 +102,10 @@ class Renderer {
         std::chrono::duration<double> elapsed = end_time - start_time;
 
         m_is_rendering = false;
-        std::cout << "Rendering finished in " << elapsed.count() << " seconds."
-                  << std::endl;
+        if (!m_was_cancelled) {
+            std::cout << "Rendering finished in " << elapsed.count() << " seconds."
+                      << std::endl;
+        }
     }
 
     void set_samples(int samples) {
@@ -111,15 +118,39 @@ class Renderer {
     }
 
     void cancel() {
+        m_was_cancelled = true;
         m_is_rendering = false;
     }
     bool is_rendering() const {
         return m_is_rendering;
     }
 
+    bool is_cancelled() const {
+        return m_was_cancelled;
+    }
+
+    void reset() {
+        m_processed_tiles = 0;
+        m_total_tiles = 0;
+        m_was_cancelled = false;
+    }
+
+    float get_progress() const {    //  获取进度
+        if (m_total_tiles == 0) {
+            return 0.0f;
+        }
+        return static_cast<float>(m_processed_tiles) / m_total_tiles;
+    }
+
+
   private:
     Settings m_settings;
+
     std::atomic<bool> m_is_rendering;
+    std::atomic<bool> m_was_cancelled;
+
+    std::atomic<int> m_processed_tiles;
+    int m_total_tiles;
 
     std::shared_ptr<Integrator> m_integrator;
 
