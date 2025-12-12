@@ -6,6 +6,8 @@
 #include <fstream>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+
+#include "simd.h"
 #include "stb_image_write.h"
 
 namespace ImageOps {
@@ -175,7 +177,7 @@ namespace ImageOps {
                 image_data[idx + 1] = 255 - image_data[idx + 1];
                 image_data[idx + 2] = 255 - image_data[idx + 2];
             }
-        } else if (type == 4) { // Median
+        }else if (type == 4) { // Median - SIMD 优化版本
             std::vector<unsigned char> source = image_data;
             const unsigned char* src_ptr = source.data();
             unsigned char* dst_ptr = image_data.data();
@@ -188,23 +190,52 @@ namespace ImageOps {
 
             #pragma omp parallel for schedule(static)
             for (int y = 0; y < height; ++y) {
-                // 预分配数组在循环外(线程局部)，但在 parallel 内部定义即可
-                unsigned char rs[9], gs[9], bs[9];
-
                 unsigned char* row_dst = dst_ptr + y * stride;
                 const unsigned char* row_src = src_ptr + y * stride;
-                for (int x = 0; x < width; ++x) {
-                    //快速路径
-                    if (x > 0 && x < width - 1 && y > 0 && y < height - 1) {
+
+                int x = 0;
+
+                // SIMD 处理：只在安全区域使用（非边界行和列）
+                const bool is_safe_row = (y > 0 && y < height - 1);
+
+                if (is_safe_row) {
+                    #if defined(__AVX2__)
+                        // AVX2：处理 8 像素批次
+                        const int simd_width = 8;
+                        const int safe_end = width - simd_width;
+
+                        for (x = 1; x < safe_end; x += simd_width) {
+                            median_filter_avx2(src_ptr, dst_ptr, x, y, width, stride, offsets);
+                        }
+                    #elif defined(__SSE2__)
+                        // SSE2：处理 4 像素批次
+                        const int simd_width = 4;
+                        const int safe_end = width - simd_width;
+
+                        for (x = 1; x < safe_end; x += simd_width) {
+                            median_filter_sse2(src_ptr, dst_ptr, x, y, width, stride, offsets);
+                        }
+                    #endif
+                }
+
+                // 标量路径：处理剩余像素（包括边界）
+                for (; x < width; ++x) {
+                    unsigned char rs[9], gs[9], bs[9];
+
+                    // 判断是否为内部像素
+                    const bool is_inner = (x > 0 && x < width - 1 && is_safe_row);
+
+                    if (is_inner) {
+                        // 快速路径：直接访问邻域
                         const unsigned char* p = row_src + x * 4;
-                        for(int k=0; k<9; ++k) {
+                        for(int k = 0; k < 9; ++k) {
                             const unsigned char* neighbor = p + offsets[k];
                             rs[k] = neighbor[0];
                             gs[k] = neighbor[1];
                             bs[k] = neighbor[2];
                         }
-                    }else {
-                        // Slow Path
+                    } else {
+                        // 慢速路径：边界安全访问
                         int t = 0;
                         for (int ky = -1; ky <= 1; ++ky) {
                             for (int kx = -1; kx <= 1; ++kx) {
@@ -216,17 +247,12 @@ namespace ImageOps {
                             }
                         }
                     }
-                    // 使用 nth_element 代替 sort
-                    // 我们只需要第 5 个元素 (index 4) 处于正确位置，不需要全排序
-                    // 这将复杂度从 O(N log N) 降低到 O(N)
-                    std::nth_element(rs, rs + 4, rs + 9);
-                    std::nth_element(gs, gs + 4, gs + 9);
-                    std::nth_element(bs, bs + 4, bs + 9);
 
+                    // 计算中值并写入
                     int dst_idx = x * 4;
-                    row_dst[dst_idx + 0] = rs[4];
-                    row_dst[dst_idx + 1] = gs[4];
-                    row_dst[dst_idx + 2] = bs[4];
+                    row_dst[dst_idx + 0] = median9_scalar(rs);
+                    row_dst[dst_idx + 1] = median9_scalar(gs);
+                    row_dst[dst_idx + 2] = median9_scalar(bs);
                     row_dst[dst_idx + 3] = row_src[x * 4 + 3];
                 }
             }

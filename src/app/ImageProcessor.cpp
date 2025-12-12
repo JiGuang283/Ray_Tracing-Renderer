@@ -1,6 +1,6 @@
 #include "ImageProcessor.h"
 #include "image_ops.h"
-#include "simd_rgba.h"
+#include "simd.h"
 #include <future>
 #include <algorithm>
 #include <thread>
