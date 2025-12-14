@@ -41,5 +41,6 @@ shared_ptr<hittable> pbr_materials_gallery();
 shared_ptr<hittable> pbr_reference_scene();
 shared_ptr<hittable> point_light_scene();
 shared_ptr<hittable> mis_demo();
+shared_ptr<hittable> mesh_demo_scene();
 
 #endif

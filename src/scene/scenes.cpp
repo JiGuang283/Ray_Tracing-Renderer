@@ -5,6 +5,7 @@
 #include "constant_medium.h"
 #include "hittable_list.h"
 #include "material.h"
+#include "mesh.h"
 #include "moving_sphere.h"
 #include "sphere.h"
 
@@ -574,6 +575,33 @@ shared_ptr<hittable> mis_demo() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
+shared_ptr<hittable> mesh_demo_scene() {
+    hittable_list world;
+
+    auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    auto matte = make_shared<lambertian>(color(0.8, 0.3, 0.3));
+    auto metal_mat = make_shared<metal>(color(0.8, 0.85, 0.9), 0.05);
+
+    auto base_mesh = mesh::load_from_obj("assets/sample_mesh.obj", matte,
+                                         vec3(-2.5, 0.0, 0.0),
+                                         vec3(1.5, 1.5, 1.5));
+    if (base_mesh) {
+        world.add(base_mesh);
+    }
+
+    auto instanced_mesh = mesh::load_from_obj("assets/sample_mesh.obj", metal_mat,
+                                              vec3(0.0, 0.0, 0.0),
+                                              vec3(1.5, 1.5, 1.5));
+    if (instanced_mesh) {
+        world.add(instanced_mesh);
+        world.add(make_shared<translate>(instanced_mesh, vec3(3.5, 0.0, 0.0)));
+    }
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 SceneConfig select_scene(int scene_id) {
     SceneConfig config;
 
@@ -727,6 +755,17 @@ SceneConfig select_scene(int scene_id) {
         // Add PointLight (NEE sampling)
         config.lights.push_back(
             make_shared<PointLight>(point3(5, 10, 5), color(100, 100, 100)));
+        break;
+
+    case 17:
+        config.world = mesh_demo_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.7, 0.8, 1.0);
+        config.lookfrom = point3(10, 5, 15);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
         break;
 
     case 10:
