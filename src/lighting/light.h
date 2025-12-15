@@ -1,6 +1,7 @@
 #ifndef LIGHT_H
 #define LIGHT_H
 
+#include "ray.h"
 #include "vec3.h"
 
 struct LightSample {
@@ -26,6 +27,11 @@ class Light {
 
     // 是否是 Delta 光源
     virtual bool is_delta() const {
+        return false;
+    }
+
+    // 是否是无限远环境光源
+    virtual bool is_infinite() const {
         return false;
     }
 
