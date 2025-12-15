@@ -602,6 +602,112 @@ shared_ptr<hittable> mesh_demo_scene() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
+shared_ptr<hittable> mesh_obj_loader_gallery() {
+    hittable_list world;
+
+    auto ground_mat = make_shared<lambertian>(color(0.4, 0.4, 0.4));
+    world.add(make_shared<xz_rect>(-20, 20, -20, 20, -0.01, ground_mat));
+
+    auto small_mat = make_shared<lambertian>(color(0.2, 0.6, 0.9));
+    auto medium_mat = make_shared<metal>(color(0.9, 0.8, 0.6), 0.08);
+    auto large_mat = make_shared<lambertian>(color(0.8, 0.25, 0.25));
+
+    if (auto mesh_small = mesh::load_from_obj("assets/sample_mesh.obj", small_mat,
+                                             vec3(-4.0, 0.0, -2.0),
+                                             vec3(0.8, 0.8, 0.8))) {
+        world.add(mesh_small);
+    }
+
+    if (auto mesh_medium = mesh::load_from_obj(
+            "assets/sample_mesh.obj", medium_mat, vec3(0.0, 0.0, 0.0),
+            vec3(1.3, 1.3, 1.3))) {
+        world.add(mesh_medium);
+    }
+
+    if (auto mesh_large = mesh::load_from_obj("assets/sample_mesh.obj", large_mat,
+                                             vec3(4.0, 0.0, 2.0),
+                                             vec3(1.8, 1.8, 1.8))) {
+        world.add(mesh_large);
+    }
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> triangle_normal_showcase() {
+    hittable_list world;
+
+    auto ground = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    world.add(make_shared<xz_rect>(-10, 10, -10, 10, -0.01, ground));
+
+    auto light = make_shared<diffuse_light>(color(6, 6, 6));
+    world.add(make_shared<xy_rect>(-2, 2, 3, 7, -3, light));
+
+    auto flat_mat = make_shared<lambertian>(color(0.7, 0.1, 0.1));
+    auto smooth_mat = make_shared<lambertian>(color(0.1, 0.4, 0.8));
+
+    point3 a(-2.0, 0.0, 1.5);
+    point3 b(0.0, 3.0, 1.5);
+    point3 c(2.0, 0.0, 1.5);
+
+    // Flat shading: relies on face normal only.
+    world.add(make_shared<triangle>(a, b, c, flat_mat));
+
+    point3 d(-2.0, 0.0, -1.5);
+    point3 e(0.0, 3.0, -1.5);
+    point3 f(2.0, 0.0, -1.5);
+    vec3 n0 = unit_vector(vec3(0.0, 1.2, 0.4));
+    vec3 n1 = unit_vector(vec3(0.0, 1.0, 0.0));
+    vec3 n2 = unit_vector(vec3(0.0, 1.2, -0.4));
+
+    // Smooth shading: uses per-vertex normals for interpolation.
+    world.add(make_shared<triangle>(d, e, f, n0, n1, n2, smooth_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> mesh_bvh_stress_scene() {
+    hittable_list world;
+
+    auto ground = make_shared<lambertian>(color(0.45, 0.45, 0.45));
+    world.add(make_shared<xz_rect>(-30, 30, -30, 30, -0.02, ground));
+
+    auto mesh_mat = make_shared<lambertian>(color(0.8, 0.75, 0.65));
+    auto base_mesh =
+        mesh::load_from_obj("assets/sample_mesh.obj", mesh_mat, vec3(0, 0, 0),
+                            vec3(1.2, 1.2, 1.2));
+
+    if (base_mesh) {
+        for (int x = -2; x <= 2; ++x) {
+            for (int z = -2; z <= 2; ++z) {
+                vec3 offset(6.0 * x, 0.0, 6.0 * z);
+                world.add(make_shared<translate>(base_mesh, offset));
+            }
+        }
+    }
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> mesh_transform_instancing_scene() {
+    hittable_list world;
+
+    auto ground = make_shared<lambertian>(color(0.3, 0.3, 0.35));
+    world.add(make_shared<xz_rect>(-15, 15, -15, 15, -0.01, ground));
+
+    auto matte = make_shared<lambertian>(color(0.2, 0.7, 0.5));
+    auto base_mesh = mesh::load_from_obj("assets/sample_mesh.obj", matte,
+                                         vec3(0, 0, 0), vec3(1.0, 1.0, 1.0));
+
+    if (base_mesh) {
+        world.add(base_mesh);
+        world.add(make_shared<translate>(base_mesh, vec3(0.0, 1.5, -4.0)));
+        world.add(make_shared<translate>(base_mesh, vec3(-4.0, 0.0, 3.5)));
+        world.add(make_shared<translate>(base_mesh, vec3(4.0, 0.0, 3.5)));
+    }
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 SceneConfig select_scene(int scene_id) {
     SceneConfig config;
 
@@ -766,6 +872,50 @@ SceneConfig select_scene(int scene_id) {
         config.lookfrom = point3(10, 5, 15);
         config.lookat = point3(0, 1, 0);
         config.vfov = 30.0;
+        break;
+
+    case 18:
+        config.world = mesh_obj_loader_gallery();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 150;
+        config.background = color(0.7, 0.8, 1.0);
+        config.lookfrom = point3(10, 4, 14);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 28.0;
+        break;
+
+    case 19:
+        config.world = triangle_normal_showcase();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 700;
+        config.samples_per_pixel = 150;
+        config.background = color(0.2, 0.2, 0.2);
+        config.lookfrom = point3(0, 2, 9);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        break;
+
+    case 20:
+        config.world = mesh_bvh_stress_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 900;
+        config.samples_per_pixel = 100;
+        config.background = color(0.75, 0.85, 1.0);
+        config.lookfrom = point3(20, 12, 22);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 35.0;
+        break;
+
+    case 21:
+        config.world = mesh_transform_instancing_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 150;
+        config.background = color(0.65, 0.75, 1.0);
+        config.lookfrom = point3(12, 4, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 32.0;
         break;
 
     case 10:

@@ -42,5 +42,9 @@ shared_ptr<hittable> pbr_reference_scene();
 shared_ptr<hittable> point_light_scene();
 shared_ptr<hittable> mis_demo();
 shared_ptr<hittable> mesh_demo_scene();
+shared_ptr<hittable> mesh_obj_loader_gallery();
+shared_ptr<hittable> triangle_normal_showcase();
+shared_ptr<hittable> mesh_bvh_stress_scene();
+shared_ptr<hittable> mesh_transform_instancing_scene();
 
 #endif
