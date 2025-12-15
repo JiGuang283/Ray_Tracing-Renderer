@@ -43,6 +43,9 @@ shared_ptr<hittable> point_light_scene();
 shared_ptr<hittable> directional_light_scene();
 shared_ptr<hittable> spot_light_scene();
 shared_ptr<hittable> environment_light_scene();
+shared_ptr<hittable> quad_light_scene();
+shared_ptr<hittable> cornell_box_nee();
+shared_ptr<hittable> final_scene_nee();
 shared_ptr<hittable> mis_demo();
 
 #endif
