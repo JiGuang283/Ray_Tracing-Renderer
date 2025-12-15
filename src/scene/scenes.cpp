@@ -877,23 +877,23 @@ shared_ptr<hittable> materials_showcase() {
 
     // 右侧：金色PBR金属球
     auto gold = make_shared<PBRMaterial>(
-        make_shared<solid_color>(1.0, 0.766, 0.336),  // Gold albedo
-        make_shared<solid_color>(0.1, 0.1, 0.1),      // Low roughness
-        make_shared<solid_color>(1.0, 1.0, 1.0));     // Full metallic
+        make_shared<solid_color>(1.0, 0.766, 0.336), // Gold albedo
+        make_shared<solid_color>(0.1, 0.1, 0.1),     // Low roughness
+        make_shared<solid_color>(1.0, 1.0, 1.0));    // Full metallic
     world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, gold));
 
     // 后排左：铜色粗糙金属
-    auto copper = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.955, 0.638, 0.538),
-        make_shared<solid_color>(0.4, 0.4, 0.4),
-        make_shared<solid_color>(1.0, 1.0, 1.0));
+    auto copper =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.955, 0.638, 0.538),
+                                 make_shared<solid_color>(0.4, 0.4, 0.4),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
     world.add(make_shared<sphere>(point3(-2.5, 0.7, -3), 0.7, copper));
 
     // 后排中：蓝色塑料（非金属PBR）
-    auto blue_plastic = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.1, 0.2, 0.8),
-        make_shared<solid_color>(0.05, 0.05, 0.05),
-        make_shared<solid_color>(0.0, 0.0, 0.0));
+    auto blue_plastic =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.1, 0.2, 0.8),
+                                 make_shared<solid_color>(0.05, 0.05, 0.05),
+                                 make_shared<solid_color>(0.0, 0.0, 0.0));
     world.add(make_shared<sphere>(point3(0, 0.7, -3), 0.7, blue_plastic));
 
     // 后排右：红色漫反射
@@ -907,8 +907,7 @@ shared_ptr<hittable> materials_showcase() {
             make_shared<solid_color>(0.9, 0.9, 0.9),
             make_shared<solid_color>(roughness, roughness, roughness),
             make_shared<solid_color>(1.0, 1.0, 1.0));
-        world.add(make_shared<sphere>(
-            point3(-3 + i * 1.5, 0.4, 3), 0.4, mat));
+        world.add(make_shared<sphere>(point3(-3 + i * 1.5, 0.4, 3), 0.4, mat));
     }
 
     return make_shared<bvh_node>(world, 0, 1);
@@ -925,13 +924,13 @@ shared_ptr<hittable> cornell_box_extended() {
     auto light = make_shared<diffuse_light>(color(15, 15, 15));
 
     // 墙壁
-    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 555, green));  // 左墙
-    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 0, red));      // 右墙
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 555, green)); // 左墙
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 0, red));     // 右墙
     objects.add(make_shared<flip_face>(
-        make_shared<xz_rect>(213, 343, 227, 332, 554, light)));     // 顶灯
-    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 0, white));    // 地板
-    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 555, white));  // 天花板
-    objects.add(make_shared<xy_rect>(0, 555, 0, 555, 555, white));  // 后墙
+        make_shared<xz_rect>(213, 343, 227, 332, 554, light)));    // 顶灯
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 0, white));   // 地板
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 555, white)); // 天花板
+    objects.add(make_shared<xy_rect>(0, 555, 0, 555, 555, white)); // 后墙
 
     // 左侧：高的白色盒子
     shared_ptr<hittable> box1 =
@@ -945,10 +944,10 @@ shared_ptr<hittable> cornell_box_extended() {
     objects.add(make_shared<sphere>(point3(190, 90, 190), 90, glass));
 
     // 添加一个金属球在盒子上
-    auto gold = make_shared<PBRMaterial>(
-        make_shared<solid_color>(1.0, 0.766, 0.336),
-        make_shared<solid_color>(0.15, 0.15, 0.15),
-        make_shared<solid_color>(1.0, 1.0, 1.0));
+    auto gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(1.0, 0.766, 0.336),
+                                 make_shared<solid_color>(0.15, 0.15, 0.15),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
     objects.add(make_shared<sphere>(point3(350, 380, 350), 50, gold));
 
     return make_shared<bvh_node>(objects, 0, 1);
@@ -961,7 +960,7 @@ shared_ptr<hittable> interior_lighting_scene() {
 
     // 地板
     auto floor_mat = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.3, 0.2, 0.15),  // 木地板色
+        make_shared<solid_color>(0.3, 0.2, 0.15), // 木地板色
         make_shared<solid_color>(0.6, 0.6, 0.6),
         make_shared<solid_color>(0.0, 0.0, 0.0));
     objects.add(make_shared<xz_rect>(-10, 10, -10, 10, 0, floor_mat));
@@ -981,11 +980,12 @@ shared_ptr<hittable> interior_lighting_scene() {
     objects.add(make_shared<xz_rect>(-10, 10, -5, 10, 8, ceiling_mat));
 
     // 中央桌子（简化为一个扁盒子）
-    auto table_mat = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.4, 0.25, 0.1),
-        make_shared<solid_color>(0.3, 0.3, 0.3),
-        make_shared<solid_color>(0.0, 0.0, 0.0));
-    objects.add(make_shared<box>(point3(-2, 0, -1), point3(2, 1, 3), table_mat));
+    auto table_mat =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.4, 0.25, 0.1),
+                                 make_shared<solid_color>(0.3, 0.3, 0.3),
+                                 make_shared<solid_color>(0.0, 0.0, 0.0));
+    objects.add(
+        make_shared<box>(point3(-2, 0, -1), point3(2, 1, 3), table_mat));
 
     // 桌上物品
     // 1. 镜面金属球
@@ -997,10 +997,10 @@ shared_ptr<hittable> interior_lighting_scene() {
     objects.add(make_shared<sphere>(point3(0.5, 1.4, 1.5), 0.4, glass));
 
     // 3. 红色花瓶（简化为球）
-    auto red_ceramic = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.7, 0.1, 0.1),
-        make_shared<solid_color>(0.2, 0.2, 0.2),
-        make_shared<solid_color>(0.0, 0.0, 0.0));
+    auto red_ceramic =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.7, 0.1, 0.1),
+                                 make_shared<solid_color>(0.2, 0.2, 0.2),
+                                 make_shared<solid_color>(0.0, 0.0, 0.0));
     objects.add(make_shared<sphere>(point3(1, 1.6, 0.5), 0.6, red_ceramic));
 
     // 墙上的装饰：小金属球阵列
@@ -1008,7 +1008,8 @@ shared_ptr<hittable> interior_lighting_scene() {
         for (int j = 0; j < 3; ++j) {
             auto metal_mat = make_shared<PBRMaterial>(
                 make_shared<solid_color>(0.8, 0.8, 0.8),
-                make_shared<solid_color>(0.1 + j * 0.2, 0.1 + j * 0.2, 0.1 + j * 0.2),
+                make_shared<solid_color>(0.1 + j * 0.2, 0.1 + j * 0.2,
+                                         0.1 + j * 0.2),
                 make_shared<solid_color>(1.0, 1.0, 1.0));
             objects.add(make_shared<sphere>(
                 point3(-4 + i * 2, 3 + j * 1.2, -4.8), 0.3, metal_mat));
@@ -1030,64 +1031,64 @@ shared_ptr<hittable> jewelry_display() {
 
     // 展示台底座
     auto pedestal_mat = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.02, 0.02, 0.02),  // 近乎黑色
-        make_shared<solid_color>(0.1, 0.1, 0.1),     // 低粗糙度，有光泽
+        make_shared<solid_color>(0.02, 0.02, 0.02), // 近乎黑色
+        make_shared<solid_color>(0.1, 0.1, 0.1),    // 低粗糙度，有光泽
         make_shared<solid_color>(0.0, 0.0, 0.0));
     // 圆形底座用多个同心圆球模拟
     world.add(make_shared<sphere>(point3(0, -100, 0), 100.3, pedestal_mat));
 
     // 中心：钻石（用玻璃球模拟，折射率高一点）
-    auto diamond = make_shared<dielectric>(2.4);  // 钻石折射率约2.4
+    auto diamond = make_shared<dielectric>(2.4); // 钻石折射率约2.4
     world.add(make_shared<sphere>(point3(0, 1.2, 0), 1.0, diamond));
     // 内部空心增加闪烁效果
     world.add(make_shared<sphere>(point3(0, 1.2, 0), -0.6, diamond));
 
     // 左侧：金戒指（用金色球模拟）
-    auto gold = make_shared<PBRMaterial>(
-        make_shared<solid_color>(1.0, 0.766, 0.336),
-        make_shared<solid_color>(0.1, 0.1, 0.1),
-        make_shared<solid_color>(1.0, 1.0, 1.0));
+    auto gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(1.0, 0.766, 0.336),
+                                 make_shared<solid_color>(0.1, 0.1, 0.1),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
     world.add(make_shared<sphere>(point3(-2.5, 0.6, 0), 0.6, gold));
     // 戒指上的小钻石
     world.add(make_shared<sphere>(point3(-2.5, 1.25, 0), 0.2, diamond));
 
     // 右侧：银项链球
-    auto silver = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.97, 0.96, 0.91),
-        make_shared<solid_color>(0.15, 0.15, 0.15),
-        make_shared<solid_color>(1.0, 1.0, 1.0));
+    auto silver =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.97, 0.96, 0.91),
+                                 make_shared<solid_color>(0.15, 0.15, 0.15),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
     world.add(make_shared<sphere>(point3(2.5, 0.5, 0), 0.5, silver));
 
     // 后排装饰球
     // 玫瑰金
-    auto rose_gold = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.92, 0.72, 0.65),
-        make_shared<solid_color>(0.2, 0.2, 0.2),
-        make_shared<solid_color>(1.0, 1.0, 1.0));
+    auto rose_gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.92, 0.72, 0.65),
+                                 make_shared<solid_color>(0.2, 0.2, 0.2),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
     world.add(make_shared<sphere>(point3(-1.5, 0.4, -2), 0.4, rose_gold));
 
     // 铂金
-    auto platinum = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.9, 0.89, 0.87),
-        make_shared<solid_color>(0.05, 0.05, 0.05),
-        make_shared<solid_color>(1.0, 1.0, 1.0));
+    auto platinum =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.9, 0.89, 0.87),
+                                 make_shared<solid_color>(0.05, 0.05, 0.05),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
     world.add(make_shared<sphere>(point3(0, 0.35, -2.2), 0.35, platinum));
 
     // 铜
-    auto copper = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.955, 0.638, 0.538),
-        make_shared<solid_color>(0.25, 0.25, 0.25),
-        make_shared<solid_color>(1.0, 1.0, 1.0));
+    auto copper =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.955, 0.638, 0.538),
+                                 make_shared<solid_color>(0.25, 0.25, 0.25),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
     world.add(make_shared<sphere>(point3(1.5, 0.4, -2), 0.4, copper));
 
     // 前排小珍珠
     auto pearl = make_shared<PBRMaterial>(
         make_shared<solid_color>(0.95, 0.93, 0.88),
         make_shared<solid_color>(0.3, 0.3, 0.3),
-        make_shared<solid_color>(0.0, 0.0, 0.0));  // 珍珠是非金属
+        make_shared<solid_color>(0.0, 0.0, 0.0)); // 珍珠是非金属
     for (int i = 0; i < 5; ++i) {
-        world.add(make_shared<sphere>(
-            point3(-1.5 + i * 0.75, 0.2, 2), 0.2, pearl));
+        world.add(
+            make_shared<sphere>(point3(-1.5 + i * 0.75, 0.2, 2), 0.2, pearl));
     }
 
     return make_shared<bvh_node>(world, 0, 1);
@@ -1111,8 +1112,8 @@ shared_ptr<hittable> glass_caustics_scene() {
 
     // 小玻璃球阵列
     for (int i = 0; i < 3; ++i) {
-        objects.add(make_shared<sphere>(
-            point3(-3 + i * 3, 0.8, 3), 0.8, glass));
+        objects.add(
+            make_shared<sphere>(point3(-3 + i * 3, 0.8, 3), 0.8, glass));
     }
 
     // 彩色玻璃球
@@ -1129,16 +1130,16 @@ shared_ptr<hittable> glass_caustics_scene() {
     auto mirror = make_shared<metal>(color(0.95, 0.95, 0.95), 0.0);
     objects.add(make_shared<sphere>(point3(-4, 0.7, 2), 0.7, mirror));
 
-    auto gold = make_shared<PBRMaterial>(
-        make_shared<solid_color>(1.0, 0.766, 0.336),
-        make_shared<solid_color>(0.1, 0.1, 0.1),
-        make_shared<solid_color>(1.0, 1.0, 1.0));
+    auto gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(1.0, 0.766, 0.336),
+                                 make_shared<solid_color>(0.1, 0.1, 0.1),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
     objects.add(make_shared<sphere>(point3(4, 0.6, 2.5), 0.6, gold));
 
     // 顶部面光源
     auto light = make_shared<diffuse_light>(color(12, 12, 12));
-    objects.add(make_shared<flip_face>(
-        make_shared<xz_rect>(-3, 3, -3, 3, 10, light)));
+    objects.add(
+        make_shared<flip_face>(make_shared<xz_rect>(-3, 3, -3, 3, 10, light)));
 
     return make_shared<bvh_node>(objects, 0, 1);
 }
@@ -1467,9 +1468,9 @@ SceneConfig select_scene(int scene_id) {
             make_shared<EnvironmentLight>("uffizi_probe.hdr"));
         break;
 
-    // ========================================================================
-    // Final Demo Scenes (30-34)
-    // ========================================================================
+        // ========================================================================
+        // Final Demo Scenes (30-34)
+        // ========================================================================
 
     case 30: // Materials Showcase - 材质展示场景
         config.world = materials_showcase();
@@ -1510,9 +1511,8 @@ SceneConfig select_scene(int scene_id) {
         config.lookat = point3(0, 2, 0);
         config.vfov = 50.0;
         // 天花板面光源
-        config.lights.push_back(
-            make_shared<QuadLight>(point3(-1, 7.99, 0), vec3(2, 0, 0),
-                                   vec3(0, 0, 2), color(8, 8, 7)));
+        config.lights.push_back(make_shared<QuadLight>(
+            point3(-1, 7.99, 0), vec3(2, 0, 0), vec3(0, 0, 2), color(8, 8, 7)));
         // 聚光灯照亮桌面
         config.lights.push_back(make_shared<SpotLight>(
             point3(0, 6, 4), vec3(0, -1, -0.3), 25.0, color(800, 800, 750)));
