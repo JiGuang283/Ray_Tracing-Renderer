@@ -24,26 +24,56 @@ else()
 	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -ffast-math")
 endif()
 
-# 检测并添加编译选项
-if(ENABLE_AVX2)
-	if(MSVC)
-		add_compile_options(/arch:AVX2)
-	else()
-		include(CheckCXXCompilerFlag)
-		check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_MAVX2)
-		if(COMPILER_SUPPORTS_MAVX2)
-			add_compile_options(-mavx2)
-		else()
-			message(WARNING "AVX2 not supported by compiler; skipping -mavx2")
-		endif()
-	endif()
-endif()
+# 定义选项供用户控制
+option(ENABLE_AVX2 "Enable AVX2/FMA instructions" ON)
+option(ENABLE_MARCH_NATIVE "Enable -march=native optimization" ON)
 
-if(ENABLE_MARCH_NATIVE)
-	if(MSVC)
-		message(WARNING "-march=native not applicable on MSVC; use /arch:AVX2 or /arch:AVX512* instead.")
-	else()
-		add_compile_options(-march=native)
+if(MSVC)
+	# MSVC 编译器
+	if(ENABLE_AVX2)
+		# MSVC 的 /arch:AVX2 自动包含 FMA3
+		add_compile_options(/arch:AVX2)
+		add_definitions(-D__AVX2__ -D__FMA__) # MSVC有时不自动定义这些宏，手动加上保险
+		message(STATUS "AVX2/FMA enabled (MSVC)")
+	endif()
+
+	if(ENABLE_MARCH_NATIVE)
+		message(WARNING "-march=native is not supported by MSVC. Ignoring.")
+	endif()
+
+else()
+	# GCC / Clang 编译器
+	include(CheckCXXCompilerFlag)
+
+	if(ENABLE_MARCH_NATIVE)
+		# 如果开启了 native，它会自动检测并开启所有支持的指令集
+		check_cxx_compiler_flag("-march=native" COMPILER_SUPPORTS_MARCH_NATIVE)
+		if(COMPILER_SUPPORTS_MARCH_NATIVE)
+			add_compile_options(-march=native)
+			message(STATUS "Architecture optimization: -march=native enabled")
+		else()
+			message(WARNING "Compiler does not support -march=native")
+		endif()
+
+	elseif(ENABLE_AVX2)
+		# 如果没开 native 但开了 AVX2，手动添加 -mavx2 和 -mfma
+		check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
+
+		if(COMPILER_SUPPORTS_AVX2)
+			add_compile_options(-mavx2)
+			message(STATUS "AVX2 enabled")
+
+			# FMA 通常与 AVX2 一起使用，但也需要单独检查
+			check_cxx_compiler_flag("-mfma" COMPILER_SUPPORTS_FMA)
+			if(COMPILER_SUPPORTS_FMA)
+				add_compile_options(-mfma)
+				message(STATUS "FMA enabled")
+			else()
+				message(STATUS "FMA not supported by compiler, code might run slower")
+			endif()
+		else()
+			message(WARNING "AVX2 requested but not supported by compiler")
+		endif()
 	endif()
 endif()
 

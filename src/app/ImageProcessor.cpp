@@ -79,15 +79,26 @@ void ImageProcessor::process_rows_simd(
             size_t idx0 = (height - 1 - j) * width + i; // 翻转 Y 轴
 
             #if defined(__AVX2__)
-            if (config_.tone_mapping_type == 0) {
-                // 快速路径：无色调映射，使用 AVX2
-                __m256 vr = _mm256_load_ps(&rbuf[idx0]);
-                __m256 vg = _mm256_load_ps(&gbuf[idx0]);
-                __m256 vb = _mm256_load_ps(&bbuf[idx0]);
+                // 1. 加载 (使用 loadu 防止崩溃)
+                __m256 vr = _mm256_loadu_ps(&rbuf[idx0]);
+                __m256 vg = _mm256_loadu_ps(&gbuf[idx0]);
+                __m256 vb = _mm256_loadu_ps(&bbuf[idx0]);
 
-                // Clamp [0, 1]
                 __m256 v0 = _mm256_set1_ps(0.0f);
                 __m256 v1 = _mm256_set1_ps(1.0f);
+
+                if (config_.tone_mapping_type == 1) { // Reinhard
+                    // x / (x + 1)
+                    vr = tone_map_reinhard_avx2(vr);
+                    vg = tone_map_reinhard_avx2(vg);
+                    vb = tone_map_reinhard_avx2(vb);
+                } else if (config_.tone_mapping_type == 2) { // ACES
+                    vr = tone_map_aces_avx2(vr);
+                    vg = tone_map_aces_avx2(vg);
+                    vb = tone_map_aces_avx2(vb);
+                }
+
+                // Clamp [0, 1]
                 vr = _mm256_min_ps(v1, _mm256_max_ps(v0, vr));
                 vg = _mm256_min_ps(v1, _mm256_max_ps(v0, vg));
                 vb = _mm256_min_ps(v1, _mm256_max_ps(v0, vb));
@@ -109,35 +120,60 @@ void ImageProcessor::process_rows_simd(
                 vb = _mm256_i32gather_ps(lutp, ib, 4);
 
                 // 存储
-                alignas(32) float r[8], g[8], b[8];
-                _mm256_store_ps(r, vr);
-                _mm256_store_ps(g, vg);
-                _mm256_store_ps(b, vb);
+                vr = _mm256_sqrt_ps(vr);
+                vg = _mm256_sqrt_ps(vg);
+                vb = _mm256_sqrt_ps(vb);
+
+                // 5. 直接存储 (无内存往返)
+                uint8_t* dst = &output[(j * width + i) * 4];
+                store_rgba8_avx2(vr, vg, vb, dst);
+            #elif defined(__SSE2__)
+                // --- SSE2 路径
+                // 每次处理 8 个像素，SSE2 寄存器一次只能存 4 个 float
+                // 所以我们需要循环 2 次 (k=0, k=4)
+
+                for (int k = 0; k < 8; k += 4) {
+                    __m128 vr = _mm_loadu_ps(&rbuf[idx0 + k]);
+                    __m128 vg = _mm_loadu_ps(&gbuf[idx0 + k]);
+                    __m128 vb = _mm_loadu_ps(&bbuf[idx0 + k]);
+
+                    if (config_.tone_mapping_type == 1) {
+                        vr = tone_map_reinhard_sse2(vr);
+                        vg = tone_map_reinhard_sse2(vg);
+                        vb = tone_map_reinhard_sse2(vb);
+                    }elif (config_.tone_mapping_type == 2) {
+                        vr = tone_map_aces_sse2(vr);
+                        vg = tone_map_aces_sse2(vg);
+                        vb = tone_map_aces_sse2(vb);
+                    }
+}
+                }
+                // Clamp
+                __m128 v0 = _mm_set1_ps(0.0f);
+                __m128 v1 = _mm_set1_ps(1.0f);
+                vr = _mm_min_ps(v1, _mm_max_ps(v0, vr));
+                vg = _mm_min_ps(v1, _mm_max_ps(v0, vg));
+                vb = _mm_min_ps(v1, _mm_max_ps(v0, vb));
+
+                // Gamma 2.0 (Sqrt)
+                vr = _mm_sqrt_ps(vr);
+                vg = _mm_sqrt_ps(vg);
+                vb = _mm_sqrt_ps(vb);
 
                 uint8_t* dst = &output[(j * width + i) * 4];
-                store_rgba8_avx2(r, g, b, dst);
-                continue;
-            }
-            #endif
-
-            // 标量路径（带色调映射）
-            float r[8], g[8], b[8];
-            for (int k = 0; k < 8; ++k) {
-                size_t idx = idx0 + k;
-                vec3 c(rbuf[idx], gbuf[idx], bbuf[idx]);
-                c = apply_tone_mapping(c);
-
-                r[k] = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.x()), 0.0f, 1.0f));
-                g[k] = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.y()), 0.0f, 1.0f));
-                b[k] = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.z()), 0.0f, 1.0f));
-            }
-
-            uint8_t* dst = &output[(j * width + i) * 4];
-            #if defined(__AVX2__)
-                store_rgba8_avx2(r, g, b, dst);
-            #elif defined(__SSE2__)
                 store_rgba8_sse2(r, g, b, dst);
             #else
+                float r[8], g[8], b[8];
+                for (int k = 0; k < 8; ++k) {
+                    size_t idx = idx0 + k;
+                    vec3 c(rbuf[idx], gbuf[idx], bbuf[idx]);
+                    c = apply_tone_mapping(c);
+
+                    r[k] = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.x()), 0.0f, 1.0f));
+                    g[k] = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.y()), 0.0f, 1.0f));
+                    b[k] = ImageOps::gamma_lookup(clamp_compat(static_cast<float>(c.z()), 0.0f, 1.0f));
+                }
+                uint8_t* dst = &output[(j * width + i) * 4];
                 store_rgba8_scalar(r, g, b, dst);
             #endif
         }
