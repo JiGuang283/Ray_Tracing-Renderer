@@ -50,4 +50,11 @@ shared_ptr<hittable> mis_demo();
 shared_ptr<hittable> mis_comparison_scene();
 shared_ptr<hittable> hdr_demo_scene();
 
+// Final Demo Scenes
+shared_ptr<hittable> materials_showcase();
+shared_ptr<hittable> cornell_box_extended();
+shared_ptr<hittable> interior_lighting_scene();
+shared_ptr<hittable> jewelry_display();
+shared_ptr<hittable> glass_caustics_scene();
+
 #endif
