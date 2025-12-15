@@ -94,9 +94,9 @@ class Distribution2D {
     }
 
     double pdf(double u, double v) const {
-        int iu = std::clamp(int(u * conditional[0].integral()), 0,
+        int iu = clamp(int(u * conditional[0].integral()), 0,
                             int(conditional.size()) - 1);
-        int iv = std::clamp(int(v * marginal.integral()), 0,
+        int iv = clamp(int(v * marginal.integral()), 0,
                             int(conditional.size()) - 1);
         // 这里需要重新计算
         int nu = conditional.size() > 0 ? conditional[0].integral() : 0;
@@ -105,8 +105,8 @@ class Distribution2D {
         if (nu == 0 || nv == 0)
             return 0;
 
-        int u_idx = std::clamp(int(u * nu), 0, nu - 1);
-        int v_idx = std::clamp(int(v * nv), 0, nv - 1);
+        int u_idx = clamp(int(u * nu), 0, nu - 1);
+        int v_idx = clamp(int(v * nv), 0, nv - 1);
 
         return conditional[v_idx].pdf(u_idx) * marginal.pdf(v_idx);
     }
@@ -343,8 +343,8 @@ class EnvironmentLight : public Light {
             return 0;
 
         // 获取 (u, v) 位置的 PDF
-        int u_idx = std::clamp(int(u * width), 0, width - 1);
-        int v_idx = std::clamp(int(v * height), 0, height - 1);
+        int u_idx = clamp(int(u * width), 0, width - 1);
+        int v_idx = clamp(int(v * height), 0, height - 1);
 
         double map_pdf = distribution.conditional[v_idx].pdf(u_idx) *
                          distribution.marginal.pdf(v_idx);
