@@ -45,9 +45,14 @@ constexpr double kShutterClose = 1.0;
 
 int main(int argc, char *args[]) {
 
-    int scene_id = 11;
+    int scene_id = 23;
+    int integrator_id = 4; // 0: Path, 1: RR, 2: PBR, 3: NEE, 4: MIS
+
     if (argc > 1) {
         scene_id = std::atoi(args[1]);
+    }
+    if (argc > 2) {
+        integrator_id = std::atoi(args[2]);
     }
 
     SceneConfig config = select_scene(scene_id);
@@ -69,7 +74,28 @@ int main(int argc, char *args[]) {
 
     Renderer renderer;
     renderer.set_samples(config.samples_per_pixel);
-    renderer.set_integrator(dirlightIntegrator);
+
+    switch (integrator_id) {
+    case 0:
+        renderer.set_integrator(integrator);
+        break;
+    case 1:
+        renderer.set_integrator(rrIntegrator);
+        break;
+    case 2:
+        renderer.set_integrator(pbrIntegrator);
+        break;
+    case 3:
+        renderer.set_integrator(dirlightIntegrator);
+        break;
+    case 4:
+        renderer.set_integrator(misIntegrator);
+        break;
+    default:
+        renderer.set_integrator(misIntegrator);
+        break;
+    }
+
     renderer.set_max_depth(50);
 
     // Create window app handle

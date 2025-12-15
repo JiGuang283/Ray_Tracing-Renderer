@@ -577,6 +577,54 @@ shared_ptr<hittable> mis_demo() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
+shared_ptr<hittable> mis_comparison_scene() {
+    hittable_list world;
+
+    auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // 1. Smooth Metal (Roughness 0.001) - NEE struggles with Large Light, BSDF
+    // wins
+    auto smooth_metal = make_shared<PBRMaterial>(
+        make_shared<solid_color>(0.9, 0.6, 0.2), // Gold
+        make_shared<solid_color>(0.001, 0.001, 0.001),
+        make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(-2.5, 1, 0), 1.0, smooth_metal));
+
+    // 2. Rough Metal (Roughness 0.4) - NEE is fine
+    auto rough_metal = make_shared<PBRMaterial>(
+        make_shared<solid_color>(0.8, 0.8, 0.8), // Silver
+        make_shared<solid_color>(0.4, 0.4, 0.4),
+        make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, rough_metal));
+
+    // 3. Glass (Transmission)
+    auto glass = make_shared<dielectric>(1.5);
+    world.add(make_shared<sphere>(point3(2.5, 1, 0), 1.0, glass));
+
+    // Lights are added in select_scene via config.lights
+    // But we need visual representation here
+
+    // Large Area Light (Top)
+    auto light_mat = make_shared<diffuse_light>(color(5, 5, 5));
+    // Centered at (0, 10, 0), size 20x20
+    // Using xz_rect for top light (y is constant)
+    // xz_rect normal is (0, 1, 0) (up), so we need to flip it to face down
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(-10, 10, -10, 10, 10, light_mat)));
+
+    // Small Intense Light (Right Side)
+    auto small_light_mat = make_shared<diffuse_light>(color(50, 50, 50));
+    // Centered at (6, 4, 2), size 0.5x0.5 facing -X
+    // Using yz_rect for side light (x is constant)
+    // yz_rect normal is (1, 0, 0) (right), so we need to flip it to face left
+    // (-X)
+    world.add(make_shared<flip_face>(
+        make_shared<yz_rect>(3.75, 4.25, 1.75, 2.25, 6, small_light_mat)));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 shared_ptr<hittable> directional_light_scene() {
     hittable_list objects;
 
@@ -1013,6 +1061,27 @@ SceneConfig select_scene(int scene_id) {
         config.lights.push_back(
             make_shared<QuadLight>(point3(123, 554, 147), vec3(300, 0, 0),
                                    vec3(0, 0, 265), color(7, 7, 7)));
+        break;
+
+    case 23:
+        config.world = mis_comparison_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 64; // Low samples to highlight noise
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 3, 8);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 35.0;
+
+        // Large Light (Top)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-10, 10, -10), vec3(20, 0, 0),
+                                   vec3(0, 0, 20), color(5, 5, 5)));
+
+        // Small Light (Right)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(6, 4, 2), vec3(0, 0.5, 0),
+                                   vec3(0, 0, 0.5), color(50, 50, 50)));
         break;
 
     case 10:

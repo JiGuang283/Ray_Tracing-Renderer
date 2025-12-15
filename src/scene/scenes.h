@@ -47,5 +47,6 @@ shared_ptr<hittable> quad_light_scene();
 shared_ptr<hittable> cornell_box_nee();
 shared_ptr<hittable> final_scene_nee();
 shared_ptr<hittable> mis_demo();
+shared_ptr<hittable> mis_comparison_scene();
 
 #endif
