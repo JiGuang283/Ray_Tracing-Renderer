@@ -4,11 +4,23 @@
 #include <cmath>
 #include <iostream>
 #include <fstream>
+#include <sstream>
+#include <chrono>
+#include <iomanip>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 
 #include "simd.h"
 #include "stb_image_write.h"
+
+// 处理跨平台的 mkdir
+#ifdef _WIN32
+    #include <direct.h>
+    #define MKDIR(dir) _mkdir(dir)
+#else
+    #include <sys/stat.h>
+    #define MKDIR(dir) mkdir(dir, 0755)
+#endif
 
 namespace ImageOps {
 
@@ -25,23 +37,47 @@ namespace ImageOps {
         return (x*(x*a+b))/(x*(x*c+d)+e);
     }
 
-    void save_image_to_disk(const std::vector<unsigned char>& image_data, int width, int height, int format_idx) {
+    void save_image_to_disk(const std::vector<unsigned char>& image_data,
+                            int width, int height,
+                            int format_idx,
+                            int scene_id,
+                            int integrator_id) {
+
         if (image_data.empty() || width == 0 || height == 0) {
             std::cerr << "No image data to save." << std::endl;
             return;
         }
 
-        std::string filename = "output";
+        // 1. 创建 output 文件夹（如果不存在）
+        // 如果文件夹已存在，MKDIR 通常会返回 -1，这里我们忽略错误，假设是文件夹已存在
+        MKDIR("output");
 
+        // 2. 生成带编号和时间戳的文件名基础部分 (不含扩展名)
+        auto now = std::chrono::system_clock::now();
+        auto timestamp = std::chrono::system_clock::to_time_t(now);
+
+        std::stringstream ss;
+        ss << "output/scene" << std::setfill('0') << std::setw(2) << scene_id
+           << "_integrator" << integrator_id << "_" << timestamp;
+
+        std::string base_filename = ss.str();
+        std::string full_filename;
+
+        // 3. 根据格式添加扩展名并保存
         switch (format_idx) {
             case 0: { // PPM
-                filename += ".ppm";
-                std::ofstream ofs(filename);
+                full_filename = base_filename + ".ppm";
+                std::ofstream ofs(full_filename);
+                if (!ofs) {
+                    std::cerr << "Failed to open file for writing: " << full_filename << std::endl;
+                    return;
+                }
                 ofs << "P3\n" << width << " " << height << "\n255\n";
+
                 // 缓存 buffer 输出以减少 I/O 次数
                 std::string buffer;
                 buffer.reserve(width * height * 12);
-                char temp[16];
+                char temp[32]; // 稍微加大一点 buffer 防止溢出
                 for (int i = 0; i < width * height; ++i) {
                     int len = sprintf(temp, "%d %d %d\n",
                                             image_data[i * 4 + 0],
@@ -58,22 +94,23 @@ namespace ImageOps {
                 break;
             }
             case 1: // PNG
-                filename += ".png";
-                stbi_write_png(filename.c_str(), width, height, 4, image_data.data(), width * 4);
+                full_filename = base_filename + ".png";
+                stbi_write_png(full_filename.c_str(), width, height, 4, image_data.data(), width * 4);
                 break;
             case 2: // BMP
-                filename += ".bmp";
-                stbi_write_bmp(filename.c_str(), width, height, 4, image_data.data());
+                full_filename = base_filename + ".bmp";
+                stbi_write_bmp(full_filename.c_str(), width, height, 4, image_data.data());
                 break;
             case 3: // JPG
-                filename += ".jpg";
-                stbi_write_jpg(filename.c_str(), width, height, 4, image_data.data(), 90);
+                full_filename = base_filename + ".jpg";
+                stbi_write_jpg(full_filename.c_str(), width, height, 4, image_data.data(), 90);
                 break;
             default:
-                std::cerr << "Unknown format" << std::endl;
+                std::cerr << "Unknown format index: " << format_idx << std::endl;
                 return;
         }
-        std::cout << "Image saved to " << filename << std::endl;
+
+        std::cout << "Image saved successfully to " << full_filename << std::endl;
     }
 
     void apply_post_processing(std::vector<unsigned char>& image_data, int width, int height, int type) {

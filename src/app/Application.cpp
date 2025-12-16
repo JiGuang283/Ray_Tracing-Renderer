@@ -345,7 +345,7 @@ void Application::stop_render() {
 }
 
 void Application::save_image() {
-    ImageOps::save_image_to_disk(image_data_, width_, height_, ui_state_.save_format_idx);
+    ImageOps::save_image_to_disk(image_data_, width_, height_, ui_state_.save_format_idx, ui_state_.scene_id, ui_state_.integrator_idx);
     log("Image saved successfully.");
 }
 

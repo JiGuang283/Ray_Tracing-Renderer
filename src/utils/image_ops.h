@@ -24,7 +24,7 @@ namespace ImageOps {
     // 应用后处理滤镜
     void apply_post_processing(std::vector<unsigned char>& image_data, int width, int height, int type);
     // 保存图像到磁盘
-    void save_image_to_disk(const std::vector<unsigned char>& image_data, int width, int height, int format_idx);
+    void save_image_to_disk(const std::vector<unsigned char>& image_data, int width, int height, int format_idx, int scene_id, int integrator_id);
 
     void build_gamma_lut(float gamma, int lut_size = 4096);
 
