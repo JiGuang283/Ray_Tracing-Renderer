@@ -1144,6 +1144,115 @@ shared_ptr<hittable> glass_caustics_scene() {
     return make_shared<bvh_node>(objects, 0, 1);
 }
 
+// Scene 6: PBR Texture Demo - PBR 贴图演示
+// 展示：加载外部 PBR 贴图 (Wood, Brick, Rust)
+shared_ptr<hittable> pbr_texture_demo() {
+    hittable_list world;
+
+    // 1. Oak Floor (Non-Metal)
+    // 注意：路径相对于 build/ 目录
+    auto oak_albedo =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_diff_1k.png");
+    auto oak_rough =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_rough_1k.png");
+    auto oak_normal =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_nor_dx_1k.png");
+    auto oak_metal =
+        make_shared<solid_color>(0.0, 0.0, 0.0); // Wood is non-metal
+
+    auto mat_oak =
+        make_shared<PBRMaterial>(oak_albedo, oak_rough, oak_metal, oak_normal);
+
+    // Floor plane (20x20)
+    world.add(make_shared<xz_rect>(-10, 10, -10, 10, 0, mat_oak));
+
+    // 2. Brick Wall (Non-Metal)
+    auto brick_albedo =
+        make_shared<image_texture>("tex/brick/red_brick_diff_1k.png");
+    auto brick_rough =
+        make_shared<image_texture>("tex/brick/red_brick_rough_1k.png");
+    auto brick_normal =
+        make_shared<image_texture>("tex/brick/red_brick_nor_dx_1k.png");
+    auto brick_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+
+    auto mat_brick = make_shared<PBRMaterial>(brick_albedo, brick_rough,
+                                              brick_metal, brick_normal);
+
+    // Wall box
+    world.add(
+        make_shared<box>(point3(-5, 0, -5), point3(-2, 3, -2), mat_brick));
+
+    // 3. Rusted Metal Sphere (Metal)
+    auto rust_albedo =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_diff_1k.png");
+    auto rust_rough =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_rough_1k.png");
+    auto rust_metal =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_metal_1k.png");
+    auto rust_normal =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_nor_dx_1k.png");
+
+    auto mat_rust = make_shared<PBRMaterial>(rust_albedo, rust_rough,
+                                             rust_metal, rust_normal);
+
+    world.add(make_shared<sphere>(point3(2, 1.5, 2), 1.5, mat_rust));
+
+    // Lights
+    auto light_mat = make_shared<diffuse_light>(color(15, 15, 15));
+    world.add(make_shared<sphere>(point3(0, 10, 5), 2, light_mat));
+    world.add(make_shared<sphere>(point3(-5, 5, 5), 1, light_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+// Scene 7: PBR Floating Spheres with Environment Light
+// 展示：三个悬浮球体 (Oak, Brick, Rust) + HDR 环境光
+shared_ptr<hittable> pbr_floating_spheres_env() {
+    hittable_list world;
+
+    // 1. Oak Sphere (Left)
+    auto oak_albedo =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_diff_1k.png");
+    auto oak_rough =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_rough_1k.png");
+    auto oak_normal =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_nor_dx_1k.png");
+    auto oak_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+    auto mat_oak =
+        make_shared<PBRMaterial>(oak_albedo, oak_rough, oak_metal, oak_normal);
+
+    world.add(make_shared<sphere>(point3(-3.0, 0, 0), 1.2, mat_oak));
+
+    // 2. Brick Sphere (Middle)
+    auto brick_albedo =
+        make_shared<image_texture>("tex/brick/red_brick_diff_1k.png");
+    auto brick_rough =
+        make_shared<image_texture>("tex/brick/red_brick_rough_1k.png");
+    auto brick_normal =
+        make_shared<image_texture>("tex/brick/red_brick_nor_dx_1k.png");
+    auto brick_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+    auto mat_brick = make_shared<PBRMaterial>(brick_albedo, brick_rough,
+                                              brick_metal, brick_normal);
+
+    world.add(make_shared<sphere>(point3(0, 0, 0), 1.2, mat_brick));
+
+    // 3. Rusted Metal Sphere (Right)
+    auto rust_albedo =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_diff_1k.png");
+    auto rust_rough =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_rough_1k.png");
+    auto rust_metal =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_metal_1k.png");
+    auto rust_normal =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_nor_dx_1k.png");
+    auto mat_rust = make_shared<PBRMaterial>(rust_albedo, rust_rough,
+                                             rust_metal, rust_normal);
+
+    world.add(make_shared<sphere>(point3(3.0, 0, 0), 1.2, mat_rust));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 SceneConfig select_scene(int scene_id) {
     SceneConfig config;
 
@@ -1544,6 +1653,38 @@ SceneConfig select_scene(int scene_id) {
         config.lights.push_back(
             make_shared<QuadLight>(point3(-3, 10, -3), vec3(6, 0, 0),
                                    vec3(0, 0, 6), color(12, 12, 12)));
+        break;
+
+    case 35: // PBR Texture Demo - PBR 贴图演示
+        config.world = pbr_texture_demo();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 500; // 增加采样数以减少噪点
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 4, 8);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 40.0;
+
+        // 改用面光源 (QuadLight) 以获得软阴影和更好的 MIS 效果
+        // 位于上方，面积 4x4，强度 25
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-2, 10, -2), vec3(4, 0, 0),
+                                   vec3(0, 0, 4), color(25, 25, 25)));
+        break;
+
+    case 36: // PBR Floating Spheres - 悬浮球体 + HDR
+        config.world = pbr_floating_spheres_env();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 500;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 0, 8);
+        config.lookat = point3(0, 0, 0);
+        config.vfov = 30.0;
+
+        // 使用 HDR 环境光
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
         break;
 
     case 10:

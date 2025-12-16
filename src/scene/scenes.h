@@ -56,5 +56,7 @@ shared_ptr<hittable> cornell_box_extended();
 shared_ptr<hittable> interior_lighting_scene();
 shared_ptr<hittable> jewelry_display();
 shared_ptr<hittable> glass_caustics_scene();
+shared_ptr<hittable> pbr_texture_demo();
+shared_ptr<hittable> pbr_floating_spheres_env();
 
 #endif
