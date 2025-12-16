@@ -293,14 +293,35 @@ void Application::reset_ui_from_scene_config(int scene_id) {
 
     ui_state_.image_width = cfg.image_width;
 
-    // 计算目标高度
-    int target_height = static_cast<int>(cfg.image_width / cfg.aspect_ratio);
+    // 3. 计算目标高度 (增加 +0.5f 进行四舍五入，防止 449.99 变成 449)
+    int target_height = static_cast<int>(cfg.image_width / cfg.aspect_ratio + 0.5f);
+    if (target_height < 1) target_height = 1;
 
-    // 将宽高比的分子分母设置为实际像素值，保证 float aspect_ratio 精度无误
-    ui_state_.aspect_w = cfg.image_width;
-    ui_state_.aspect_h = target_height;
+    // 尝试匹配常见比例 (16:9, 4:3, 1:1, 3:2)，让 UI 显示更友好
+    const float epsilon = 0.01f;
 
-    // 自动加载场景推荐的积分器
+    if (std::abs(cfg.aspect_ratio - 16.0/9.0) < epsilon) {
+        ui_state_.aspect_w = 16;
+        ui_state_.aspect_h = 9;
+    }
+    else if (std::abs(cfg.aspect_ratio - 4.0/3.0) < epsilon) {
+        ui_state_.aspect_w = 4;
+        ui_state_.aspect_h = 3;
+    }
+    else if (std::abs(cfg.aspect_ratio - 1.0) < epsilon) {
+        ui_state_.aspect_w = 1;
+        ui_state_.aspect_h = 1;
+    }
+    else if (std::abs(cfg.aspect_ratio - 3.0/2.0) < epsilon) {
+        ui_state_.aspect_w = 3;
+        ui_state_.aspect_h = 2;
+    }
+    else {
+        // 如果不是标准比例，则使用精确的像素尺寸作为比例
+        ui_state_.aspect_w = cfg.image_width;
+        ui_state_.aspect_h = target_height;
+    }
+
     // 如果场景包含 "Explicit Lights" (Case 37, 40等)，最好切换到 NEE 或 MIS
     if (scene_id >= 20 || scene_id == 15 || scene_id == 16) {
         // 倾向于使用 MIS 或 NEE
