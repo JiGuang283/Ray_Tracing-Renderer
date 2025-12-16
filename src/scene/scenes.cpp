@@ -2056,16 +2056,17 @@ SceneConfig select_scene(int scene_id) {
         config.lookat = point3(0, 1.5, 0);
         config.vfov = 30.0;
 
-        // Three Point Lights in a triangle formation
-        // Red (Top Left)
+        // Three Point Lights in equilateral triangle formation
+        // All at same height (y=5), spread wider for clearer separation
+        // Red (Left)
         config.lights.push_back(
-            make_shared<PointLight>(point3(-1.5, 5, 6), color(40, 0, 0)));
-        // Green (Top)
+            make_shared<PointLight>(point3(-2.5, 5, 5), color(40, 0, 0)));
+        // Green (Back Center) - moved back in Z to create depth separation
         config.lights.push_back(
-            make_shared<PointLight>(point3(0, 6, 6), color(0, 40, 0)));
-        // Blue (Top Right)
+            make_shared<PointLight>(point3(0, 5, 8), color(0, 40, 0)));
+        // Blue (Right)
         config.lights.push_back(
-            make_shared<PointLight>(point3(1.5, 5, 6), color(0, 0, 40)));
+            make_shared<PointLight>(point3(2.5, 5, 5), color(0, 0, 40)));
         break;
 
     case 42: // Infinity Mirror Room
