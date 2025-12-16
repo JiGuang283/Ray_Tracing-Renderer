@@ -151,7 +151,7 @@ class MISPathIntegrator : public Integrator {
 
   private:
     // Clamping helper to reduce fireflies
-    static color clamp_radiance(const color &L, double max_value = 10000.0) {
+    static color clamp_radiance(const color &L, double max_value = 100.0) {
         if (L.x() > max_value || L.y() > max_value || L.z() > max_value) {
             double max_c = std::max({L.x(), L.y(), L.z()});
             if (max_c > max_value) {

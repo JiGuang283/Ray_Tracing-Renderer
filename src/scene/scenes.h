@@ -48,6 +48,7 @@ shared_ptr<hittable> cornell_box_nee();
 shared_ptr<hittable> final_scene_nee();
 shared_ptr<hittable> mis_demo();
 shared_ptr<hittable> mis_comparison_scene();
+shared_ptr<hittable> soft_shadow_demo();
 shared_ptr<hittable> hdr_demo_scene();
 
 // Final Demo Scenes
@@ -55,6 +56,14 @@ shared_ptr<hittable> materials_showcase();
 shared_ptr<hittable> cornell_box_extended();
 shared_ptr<hittable> interior_lighting_scene();
 shared_ptr<hittable> jewelry_display();
+shared_ptr<hittable> jewelry_display_simplified();
 shared_ptr<hittable> glass_caustics_scene();
+shared_ptr<hittable> pbr_texture_demo();
+shared_ptr<hittable> pbr_floating_spheres_env();
+shared_ptr<hittable> multi_light_demo();
+
+// Fun Demos
+shared_ptr<hittable> cmy_shadows_demo();
+shared_ptr<hittable> infinity_mirror_demo();
 
 #endif

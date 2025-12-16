@@ -95,9 +95,9 @@ class Distribution2D {
 
     double pdf(double u, double v) const {
         int iu = clamp(int(u * conditional[0].integral()), 0,
-                            int(conditional.size()) - 1);
-        int iv = clamp(int(v * marginal.integral()), 0,
-                            int(conditional.size()) - 1);
+                       int(conditional.size()) - 1);
+        int iv =
+            clamp(int(v * marginal.integral()), 0, int(conditional.size()) - 1);
         // 这里需要重新计算
         int nu = conditional.size() > 0 ? conditional[0].integral() : 0;
         int nv = conditional.size();

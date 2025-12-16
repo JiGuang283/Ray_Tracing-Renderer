@@ -355,7 +355,7 @@ shared_ptr<hittable> pbr_spheres_grid() {
         }
     }
 
-    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
+    auto light_mat = make_shared<diffuse_light>(color(30, 30, 30));
     // 将主光源移到相机上方 (y=60)，避免遮挡视线
     world.add(make_shared<sphere>(point3(0, 60, 0), 10, light_mat));
     // 调整侧面辅助光源的位置
@@ -621,6 +621,37 @@ shared_ptr<hittable> mis_comparison_scene() {
     // (-X)
     world.add(make_shared<flip_face>(
         make_shared<yz_rect>(3.75, 4.25, 1.75, 2.25, 6, small_light_mat)));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> soft_shadow_demo() {
+    hittable_list world;
+
+    // 1. 地面 (接收阴影)
+    auto ground_mat = make_shared<lambertian>(color(0.8, 0.8, 0.8));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // 2. 悬浮球体 (产生明显的软阴影)
+    // 离地面越高，光源越大，半影区(Penumbra)越明显
+    auto red_mat = make_shared<lambertian>(color(0.8, 0.2, 0.2));
+    world.add(make_shared<sphere>(point3(0, 2, 0), 1.0, red_mat));
+
+    // 3. 贴近地面的立方体 (阴影较硬)
+    auto blue_mat = make_shared<lambertian>(color(0.2, 0.2, 0.8));
+    world.add(make_shared<box>(point3(-4, 0, -1), point3(-2, 2, 1), blue_mat));
+
+    // 4. 金属球 (反射面光源形状)
+    auto metal_mat = make_shared<metal>(color(0.8, 0.8, 0.8), 0.1);
+    world.add(make_shared<sphere>(point3(3.5, 1, 0), 1.0, metal_mat));
+
+    // 5. 可见的面光源几何体 (用于直接观察)
+    // 光源参数: Center(0, 8, 0), Size 4x4
+    // Corner Q = (-2, 8, -2), u = (4, 0, 0), v = (0, 0, 4)
+    auto light_emit = make_shared<diffuse_light>(color(10, 10, 10));
+    // 注意：xz_rect 默认法线向上(0,1,0)，我们需要它向下照，所以用 flip_face
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(-2, 2, -2, 2, 8, light_emit)));
 
     return make_shared<bvh_node>(world, 0, 1);
 }
@@ -1094,6 +1125,70 @@ shared_ptr<hittable> jewelry_display() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
+// Scene 4 Simplified: Jewelry Display Simplified - 珠宝展示台（简化版）
+// 去掉前方的珍珠，并将钻石从金色小球放下来单独展示
+shared_ptr<hittable> jewelry_display_simplified() {
+    hittable_list world;
+
+    // 展示台底座
+    auto pedestal_mat = make_shared<PBRMaterial>(
+        make_shared<solid_color>(0.02, 0.02, 0.02), // 近乎黑色
+        make_shared<solid_color>(0.1, 0.1, 0.1),    // 低粗糙度，有光泽
+        make_shared<solid_color>(0.0, 0.0, 0.0));
+    // 圆形底座用多个同心圆球模拟
+    world.add(make_shared<sphere>(point3(0, -100, 0), 100.3, pedestal_mat));
+
+    // 中心：钻石（用玻璃球模拟，折射率高一点）
+    auto diamond = make_shared<dielectric>(2.4); // 钻石折射率约2.4
+    world.add(make_shared<sphere>(point3(0, 1.2, 0), 1.0, diamond));
+    // 内部空心增加闪烁效果
+    world.add(make_shared<sphere>(point3(0, 1.2, 0), -0.6, diamond));
+
+    // 左侧：金戒指（用金色球模拟）
+    auto gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(1.0, 0.766, 0.336),
+                                 make_shared<solid_color>(0.1, 0.1, 0.1),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(-2.5, 0.6, 0), 0.6, gold));
+
+    // 戒指上的小钻石 -> 移到地面单独展示
+    // 放在金戒指前面一点，地面上 (y=0.5, radius=0.2) - 调整高度以避免陷入底座
+    world.add(make_shared<sphere>(point3(-2.5, 0.5, 1.5), 0.2, diamond));
+
+    // 右侧：银项链球
+    auto silver =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.97, 0.96, 0.91),
+                                 make_shared<solid_color>(0.15, 0.15, 0.15),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(2.5, 0.5, 0), 0.5, silver));
+
+    // 后排装饰球
+    // 玫瑰金
+    auto rose_gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.92, 0.72, 0.65),
+                                 make_shared<solid_color>(0.2, 0.2, 0.2),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(-1.5, 0.4, -2), 0.4, rose_gold));
+
+    // 铂金
+    auto platinum =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.9, 0.89, 0.87),
+                                 make_shared<solid_color>(0.05, 0.05, 0.05),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(0, 0.35, -2.2), 0.35, platinum));
+
+    // 铜
+    auto copper =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.955, 0.638, 0.538),
+                                 make_shared<solid_color>(0.25, 0.25, 0.25),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(1.5, 0.4, -2), 0.4, copper));
+
+    // 前排小珍珠 -> 已移除
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 // Scene 5: Glass Caustics Scene - 玻璃焦散场景
 // 展示：玻璃折射、caustics效果、软阴影
 shared_ptr<hittable> glass_caustics_scene() {
@@ -1142,6 +1237,287 @@ shared_ptr<hittable> glass_caustics_scene() {
         make_shared<flip_face>(make_shared<xz_rect>(-3, 3, -3, 3, 10, light)));
 
     return make_shared<bvh_node>(objects, 0, 1);
+}
+
+// Scene 6: PBR Texture Demo - PBR 贴图演示
+// 展示：加载外部 PBR 贴图 (Wood, Brick, Rust)
+shared_ptr<hittable> pbr_texture_demo() {
+    hittable_list world;
+
+    // 1. Oak Floor (Non-Metal)
+    // 注意：路径相对于 build/ 目录
+    auto oak_albedo =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_diff_1k.png");
+    auto oak_rough =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_rough_1k.png");
+    auto oak_normal =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_nor_dx_1k.png");
+    auto oak_metal =
+        make_shared<solid_color>(0.0, 0.0, 0.0); // Wood is non-metal
+
+    auto mat_oak =
+        make_shared<PBRMaterial>(oak_albedo, oak_rough, oak_metal, oak_normal);
+
+    // Floor plane (20x20)
+    world.add(make_shared<xz_rect>(-10, 10, -10, 10, 0, mat_oak));
+
+    // 2. Brick Wall (Non-Metal)
+    auto brick_albedo =
+        make_shared<image_texture>("tex/brick/red_brick_diff_1k.png");
+    auto brick_rough =
+        make_shared<image_texture>("tex/brick/red_brick_rough_1k.png");
+    auto brick_normal =
+        make_shared<image_texture>("tex/brick/red_brick_nor_dx_1k.png");
+    auto brick_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+
+    auto mat_brick = make_shared<PBRMaterial>(brick_albedo, brick_rough,
+                                              brick_metal, brick_normal);
+
+    // Wall box
+    world.add(
+        make_shared<box>(point3(-5, 0, -5), point3(-2, 3, -2), mat_brick));
+
+    // 3. Rusted Metal Sphere (Metal)
+    auto rust_albedo =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_diff_1k.png");
+    auto rust_rough =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_rough_1k.png");
+    auto rust_metal =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_metal_1k.png");
+    auto rust_normal =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_nor_dx_1k.png");
+
+    auto mat_rust = make_shared<PBRMaterial>(rust_albedo, rust_rough,
+                                             rust_metal, rust_normal);
+
+    world.add(make_shared<sphere>(point3(2, 1.5, 2), 1.5, mat_rust));
+
+    // Lights
+    auto light_mat = make_shared<diffuse_light>(color(15, 15, 15));
+    world.add(make_shared<sphere>(point3(0, 10, 5), 2, light_mat));
+    world.add(make_shared<sphere>(point3(-5, 5, 5), 1, light_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+// Scene 7: PBR Floating Spheres with Environment Light
+// 展示：三个悬浮球体 (Oak, Brick, Rust) + HDR 环境光
+shared_ptr<hittable> pbr_floating_spheres_env() {
+    hittable_list world;
+
+    // 1. Oak Sphere (Left)
+    auto oak_albedo =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_diff_1k.png");
+    auto oak_rough =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_rough_1k.png");
+    auto oak_normal =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_nor_dx_1k.png");
+    auto oak_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+    auto mat_oak =
+        make_shared<PBRMaterial>(oak_albedo, oak_rough, oak_metal, oak_normal);
+
+    world.add(make_shared<sphere>(point3(-3.0, 0, 0), 1.2, mat_oak));
+
+    // 2. Brick Sphere (Middle)
+    auto brick_albedo =
+        make_shared<image_texture>("tex/brick/red_brick_diff_1k.png");
+    auto brick_rough =
+        make_shared<image_texture>("tex/brick/red_brick_rough_1k.png");
+    auto brick_normal =
+        make_shared<image_texture>("tex/brick/red_brick_nor_dx_1k.png");
+    auto brick_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+    auto mat_brick = make_shared<PBRMaterial>(brick_albedo, brick_rough,
+                                              brick_metal, brick_normal);
+
+    world.add(make_shared<sphere>(point3(0, 0, 0), 1.2, mat_brick));
+
+    // 3. Rusted Metal Sphere (Right)
+    auto rust_albedo =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_diff_1k.png");
+    auto rust_rough =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_rough_1k.png");
+    auto rust_metal =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_metal_1k.png");
+    auto rust_normal =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_nor_dx_1k.png");
+    auto mat_rust = make_shared<PBRMaterial>(rust_albedo, rust_rough,
+                                             rust_metal, rust_normal);
+
+    world.add(make_shared<sphere>(point3(3.0, 0, 0), 1.2, mat_rust));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+// Scene 37: PBR Spheres Grid with Explicit Lights (for NEE/MIS)
+shared_ptr<hittable> pbr_spheres_grid_lights() {
+    hittable_list world;
+
+    auto checker = make_shared<checker_texture>(color(0.2, 0.3, 0.1),
+                                                color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000,
+                                  make_shared<lambertian>(checker)));
+
+    int rows = 7;
+    int cols = 7;
+    double spacing = 2.5;
+
+    for (int row = 0; row < rows; ++row) {
+        for (int col = 0; col < cols; ++col) {
+            double metallic_val = (double)row / (rows - 1);
+            double roughness_val = clamp((double)col / (cols - 1), 0.05, 1.0);
+
+            auto albedo = make_shared<solid_color>(0.5, 0.0, 0.0);
+            auto roughness = make_shared<solid_color>(
+                roughness_val, roughness_val, roughness_val);
+            auto metallic = make_shared<solid_color>(metallic_val, metallic_val,
+                                                     metallic_val);
+
+            auto mat = make_shared<PBRMaterial>(albedo, roughness, metallic);
+
+            double x = (col - (cols - 1) / 2.0) * spacing;
+            double z = (row - (rows - 1) / 2.0) * spacing;
+
+            world.add(make_shared<sphere>(point3(x, 1, z), 1.0, mat));
+        }
+    }
+
+    auto light_mat = make_shared<diffuse_light>(color(15, 15, 15));
+
+    // Main Light (Top) - Quad
+    // Center (0, 60, 0), Size 30x30
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(-15, 15, -15, 15, 60, light_mat)));
+
+    // Side Light 1 (Left) - Quad
+    // Center (-20, 10, 20), Size 6x6
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(-23, -17, 17, 23, 10, light_mat)));
+
+    // Side Light 2 (Right) - Quad
+    // Center (20, 10, 20), Size 6x6
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(17, 23, 17, 23, 10, light_mat)));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> multi_light_demo() {
+    hittable_list world;
+
+    // 1. Environment / Stage
+    // Floor: Checker texture
+    auto checker = make_shared<checker_texture>(color(0.1, 0.1, 0.1),
+                                                color(0.5, 0.5, 0.5));
+    auto floor_mat = make_shared<lambertian>(checker);
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, floor_mat));
+
+    // Back Wall (Matte White)
+    auto white_wall = make_shared<lambertian>(color(0.73, 0.73, 0.73));
+    world.add(make_shared<xy_rect>(-10, 10, 0, 10, -5, white_wall));
+
+    // 2. Podiums (Dark Grey Matte)
+    auto podium_mat = make_shared<lambertian>(color(0.2, 0.2, 0.2));
+
+    // Left Podium (Short)
+    world.add(
+        make_shared<box>(point3(-3.5, 0, -1), point3(-1.5, 1, 1), podium_mat));
+
+    // Center Podium (Tall)
+    world.add(make_shared<box>(point3(-1, 0, -1), point3(1, 2, 1), podium_mat));
+
+    // Right Podium (Medium)
+    world.add(
+        make_shared<box>(point3(1.5, 0, -1), point3(3.5, 1.5, 1), podium_mat));
+
+    // 3. Objects
+    // Left: Glass Sphere (on Short Podium)
+    auto glass_mat = make_shared<dielectric>(1.5);
+    world.add(make_shared<sphere>(point3(-2.5, 1.8, 0), 0.8, glass_mat));
+    // Inner bubble for interest
+    world.add(make_shared<sphere>(point3(-2.5, 1.8, 0), -0.6, glass_mat));
+
+    // Center: Gold Sphere (on Tall Podium) - The "Hero" object
+    auto gold_mat =
+        make_shared<metal>(color(1.0, 0.71, 0.29), 0.05); // Slightly rough gold
+    world.add(make_shared<sphere>(point3(0, 2.8, 0), 0.8, gold_mat));
+
+    // Right: Rough Red Sphere (on Medium Podium)
+    auto rough_red = make_shared<lambertian>(color(0.65, 0.05, 0.05));
+    world.add(make_shared<sphere>(point3(2.5, 2.3, 0), 0.8, rough_red));
+
+    // 4. Visible Light Geometry (Quad Light Source)
+    // Positioned top-right, angled towards center
+    // We'll define the actual light in select_scene, this is just the visible
+    // mesh
+    auto light_mat = make_shared<diffuse_light>(color(8, 8, 10)); // Cool white
+    // A panel floating top right: Center approx (4, 6, 2)
+    // Let's make it look like a softbox
+    world.add(
+        make_shared<flip_face>(make_shared<xz_rect>(2, 6, 0, 4, 6, light_mat)));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> cmy_shadows_demo() {
+    hittable_list world;
+
+    // White Wall (Back)
+    auto white_mat = make_shared<lambertian>(color(1.0, 1.0, 1.0));
+    world.add(make_shared<xy_rect>(-10, 10, 0, 10, -2, white_mat));
+
+    // White Floor
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, white_mat));
+
+    // Central Occluder (Sphere)
+    // Placed slightly above ground
+    auto occluder_mat = make_shared<lambertian>(color(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(0, 1.5, 2), 1.0, occluder_mat));
+
+    // Rod holding the sphere (optional, for realism)
+    auto rod_mat = make_shared<metal>(color(0.7, 0.7, 0.7), 0.1);
+    world.add(
+        make_shared<box>(point3(-0.1, 0, 1.9), point3(0.1, 0.5, 2.1), rod_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> infinity_mirror_demo() {
+    hittable_list world;
+
+    // Mirror Room
+    auto mirror =
+        make_shared<metal>(color(0.95, 0.95, 0.95), 0.0); // Perfect mirror
+    auto dark_floor = make_shared<lambertian>(color(0.05, 0.05, 0.05));
+
+    // Floor
+    world.add(make_shared<xz_rect>(-5, 5, -5, 5, 0, dark_floor));
+    // Ceiling
+    world.add(make_shared<xz_rect>(-5, 5, -5, 5, 5, mirror));
+    // Back Wall
+    world.add(make_shared<xy_rect>(-5, 5, 0, 5, -5, mirror));
+    // Left Wall
+    world.add(make_shared<yz_rect>(0, 5, -5, 5, -5, mirror));
+    // Right Wall
+    world.add(make_shared<yz_rect>(0, 5, -5, 5, 5, mirror));
+    // Front Wall (behind camera, to close the box)
+    // We leave a gap or make it one-way? Let's just close it.
+    // The camera will be inside.
+    world.add(make_shared<xy_rect>(-5, 5, 0, 5, 5, mirror));
+
+    // Glowing Objects Inside
+    auto light_red = make_shared<diffuse_light>(color(4, 0.5, 0.5));
+    auto light_blue = make_shared<diffuse_light>(color(0.5, 0.5, 4));
+    auto light_green = make_shared<diffuse_light>(color(0.5, 4, 0.5));
+
+    world.add(make_shared<sphere>(point3(-2, 1, 0), 0.5, light_red));
+    world.add(make_shared<sphere>(point3(2, 1, 0), 0.5, light_blue));
+    world.add(make_shared<sphere>(point3(0, 3, -2), 0.5, light_green));
+
+    // Central Object
+    auto chrome = make_shared<metal>(color(0.8, 0.8, 0.8), 0.1);
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, chrome));
+
+    return make_shared<bvh_node>(world, 0, 1);
 }
 
 SceneConfig select_scene(int scene_id) {
@@ -1220,7 +1596,7 @@ SceneConfig select_scene(int scene_id) {
         config.world = final_scene();
         config.aspect_ratio = 1.0;
         config.image_width = 800;
-        config.samples_per_pixel = 10000;
+        config.samples_per_pixel = 500; // 原10000
         config.background = color(0, 0, 0);
         config.lookfrom = point3(478, 278, -600);
         config.lookat = point3(278, 278, 0);
@@ -1254,11 +1630,11 @@ SceneConfig select_scene(int scene_id) {
         config.world = pbr_materials_gallery();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
-        config.samples_per_pixel = 1000;
+        config.samples_per_pixel = 2000;
         config.background = color(0.1, 0.1, 0.1);
         config.lookfrom = point3(0, 10, 20);
         config.lookat = point3(0, 0, 0);
-        config.vfov = 30.0;
+        config.vfov = 25.0;
         break;
 
     case 14:
@@ -1269,14 +1645,14 @@ SceneConfig select_scene(int scene_id) {
         config.background = color(0.05, 0.05, 0.05);
         config.lookfrom = point3(0, 15, 25);
         config.lookat = point3(0, 0, 0);
-        config.vfov = 30.0;
+        config.vfov = 25.0;
         break;
 
     case 15:
         config.world = point_light_scene();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
-        config.samples_per_pixel = 100;
+        config.samples_per_pixel = 1000;
         config.background = color(0.0, 0.0, 0.0);
         config.lookfrom = point3(0, 5, 10);
         config.lookat = point3(0, 1, 0);
@@ -1303,7 +1679,7 @@ SceneConfig select_scene(int scene_id) {
         config.world = directional_light_scene();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
-        config.samples_per_pixel = 100;
+        config.samples_per_pixel = 400;
         config.background = color(0.0, 0.0, 0.0);
         config.lookfrom = point3(0, 6, 12);
         config.lookat = point3(0, 2, 0);
@@ -1338,7 +1714,7 @@ SceneConfig select_scene(int scene_id) {
         config.world = quad_light_scene();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
-        config.samples_per_pixel = 100;
+        config.samples_per_pixel = 1000;
         config.background = color(0.0, 0.0, 0.0);
         config.lookfrom = point3(0, 4, 15);
         config.lookat = point3(0, 3, 0);
@@ -1544,6 +1920,166 @@ SceneConfig select_scene(int scene_id) {
         config.lights.push_back(
             make_shared<QuadLight>(point3(-3, 10, -3), vec3(6, 0, 0),
                                    vec3(0, 0, 6), color(12, 12, 12)));
+        break;
+
+    case 35: // PBR Texture Demo - PBR 贴图演示
+        config.world = pbr_texture_demo();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 500; // 增加采样数以减少噪点
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 4, 8);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 40.0;
+
+        // 改用面光源 (QuadLight) 以获得软阴影和更好的 MIS 效果
+        // 位于上方，面积 4x4，强度 25
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-2, 10, -2), vec3(4, 0, 0),
+                                   vec3(0, 0, 4), color(25, 25, 25)));
+        break;
+
+    case 36: // PBR Floating Spheres - 悬浮球体 + HDR
+        config.world = pbr_floating_spheres_env();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 500;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 0, 8);
+        config.lookat = point3(0, 0, 0);
+        config.vfov = 30.0;
+
+        // 使用 HDR 环境光
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
+        break;
+
+    case 37: // PBR Spheres Grid with NEE/MIS
+        config.world = pbr_spheres_grid_lights();
+        config.aspect_ratio = 1.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 500;
+        config.background = color(0.05, 0.05, 0.05);
+        config.lookfrom = point3(0, 40, 0);
+        config.lookat = point3(0, 0, 0);
+        config.vup = vec3(0, 0, -1);
+        config.vfov = 25.0;
+
+        // Add QuadLights
+        // Main Light: Q=(-15, 60, -15), u=(30, 0, 0), v=(0, 0, 30)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-15, 60, -15), vec3(30, 0, 0),
+                                   vec3(0, 0, 30), color(15, 15, 15)));
+
+        // Side Light 1: Q=(-23, 10, 17), u=(6, 0, 0), v=(0, 0, 6)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-23, 10, 17), vec3(6, 0, 0),
+                                   vec3(0, 0, 6), color(15, 15, 15)));
+
+        // Side Light 2: Q=(17, 10, 17), u=(6, 0, 0), v=(0, 0, 6)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(17, 10, 17), vec3(6, 0, 0),
+                                   vec3(0, 0, 6), color(15, 15, 15)));
+        break;
+
+    case 38: // Soft Shadow Demo (Quad Light)
+        config.world = soft_shadow_demo();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 1000;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 6, 12);
+        config.lookat = point3(0, 2, 0);
+        config.vfov = 40.0;
+
+        // Add QuadLight for NEE
+        // Center(0, 8, 0), Size 4x4 -> Q(-2, 8, -2), u(4, 0, 0), v(0, 0, 4)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-2, 8, -2), vec3(4, 0, 0),
+                                   vec3(0, 0, 4), color(10, 10, 10)));
+        break;
+
+    case 39: // Jewelry Display Simplified - 珠宝展示台（简化版）
+        config.world = jewelry_display_simplified();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 1200;
+        config.samples_per_pixel = 1000;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 4, 8);
+        config.lookat = point3(0, 0.8, 0);
+        config.vfov = 35.0;
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
+        break;
+
+    case 40: // Multi-Light Demo
+        config.world = multi_light_demo();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 1200;
+        config.samples_per_pixel = 2000; // Increased samples for better quality
+        config.background =
+            color(0.02, 0.02, 0.05); // Very dark blueish background
+        config.lookfrom = point3(0, 5, 14);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 30.0;
+
+        // 1. Spot Light (Main Key Light for Center Gold Sphere)
+        // Positioned high up, targeting the gold sphere (0, 2.8, 0)
+        config.lights.push_back(make_shared<SpotLight>(
+            point3(0, 10, 2), vec3(0, -1, -0.1), 25.0, color(80, 80, 70)));
+
+        // 2. Point Light (Warm Accent for Right Rough Sphere)
+        // Positioned near the right sphere to create dramatic side lighting
+        config.lights.push_back(
+            make_shared<PointLight>(point3(4, 4, 2), color(30, 15, 5)));
+
+        // 3. Quad Light (Cool Fill/Softbox for Left Glass Sphere)
+        // Matches geometry: xz_rect(2, 6, 0, 4, 6) -> Q=(2, 6, 0), u=(4, 0, 0),
+        // v=(0, 0, 4) Note: The geometry was xz_rect(2, 6, 0, 4, 6) which means
+        // x in [2,6], z in [0,4], y=6 Q=(2, 6, 0), u=(4, 0, 0), v=(0, 0, 4)
+        config.lights.push_back(make_shared<QuadLight>(
+            point3(2, 6, 0), vec3(4, 0, 0), vec3(0, 0, 4), color(8, 8, 10)));
+
+        // 4. Directional Light (Rim Light / Moon)
+        // Coming from behind-left
+        config.lights.push_back(make_shared<DirectionalLight>(
+            vec3(1, -0.5, -1), color(0.1, 0.1, 0.3)));
+        break;
+
+    case 41: // CMY Colored Shadows
+        config.world = cmy_shadows_demo();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 1000;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 2, 8);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 30.0;
+
+        // Three Point Lights in equilateral triangle formation
+        // All at same height (y=5), spread wider for clearer separation
+        // Red (Left)
+        config.lights.push_back(
+            make_shared<PointLight>(point3(-2.5, 5, 5), color(40, 0, 0)));
+        // Green (Back Center) - moved back in Z to create depth separation
+        config.lights.push_back(
+            make_shared<PointLight>(point3(0, 5, 8), color(0, 40, 0)));
+        // Blue (Right)
+        config.lights.push_back(
+            make_shared<PointLight>(point3(2.5, 5, 5), color(0, 0, 40)));
+        break;
+
+    case 42: // Infinity Mirror Room
+        config.world = infinity_mirror_demo();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel =
+            1000; // Needs high samples for deep reflections
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 2, 4); // Inside the box
+        config.lookat = point3(0, 2, -4);
+        config.vfov = 60.0; // Wide angle
+        // No external lights, lit by emissive spheres
         break;
 
     case 10:

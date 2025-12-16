@@ -130,7 +130,7 @@ class DirectLightIntegrator : public Integrator {
             }
         }
         // Clamp high energy samples to reduce fireflies
-        double max_radiance = 10000.0;
+        double max_radiance = 100.0;
         if (L_direct.x() > max_radiance)
             L_direct = L_direct * (max_radiance / L_direct.x());
         if (L_direct.y() > max_radiance)

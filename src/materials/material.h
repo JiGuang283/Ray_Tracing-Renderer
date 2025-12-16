@@ -11,11 +11,11 @@
 struct hit_record;
 
 struct BSDFSample {
-    vec3 wi; // 采样生成的入射方向
-    color f; // BSDF 吞吐量, 存 f (BSDF值)，让积分器自己乘 cos 和除
-             // pdf(delta材质除外)。
-    double pdf;                   // 采样该方向的概率密度
-    bool is_specular;             // 是否是镜面反射（Delta分布）
+    vec3 wi;          // 采样生成的入射方向
+    color f;          // BSDF 吞吐量, 存 f (BSDF值)，让积分器自己乘 cos 和除
+                      // pdf(delta材质除外)。
+    double pdf;       // 采样该方向的概率密度
+    bool is_specular; // 是否是镜面反射（Delta分布）
     bool is_transmission = false; // 区分透射
 };
 
@@ -247,7 +247,15 @@ class PBRMaterial : public material {
         vec3 N = rec.normal;
         if (normal_map) {
             onb uvw;
-            uvw.build_from_w(N);
+            // 改进的 TBN 构建：尝试对齐 UV 方向 (假设 U 是水平的)
+            uvw.axis[2] = N;
+            if (fabs(N.y()) > 0.999) {
+                uvw.axis[0] = vec3(1, 0, 0); // 极点处理
+            } else {
+                uvw.axis[0] = unit_vector(cross(N, vec3(0, 1, 0))); // 水平切线
+            }
+            uvw.axis[1] = cross(N, uvw.axis[0]); // 副切线 (向下)
+
             vec3 local_n = normal_map->value_normal(rec.u, rec.v, rec.p);
             N = unit_vector(uvw.local(local_n));
         }
@@ -299,7 +307,15 @@ class PBRMaterial : public material {
         vec3 N = rec.normal;
         if (normal_map) {
             onb uvw;
-            uvw.build_from_w(N);
+            // 改进的 TBN 构建
+            uvw.axis[2] = N;
+            if (fabs(N.y()) > 0.999) {
+                uvw.axis[0] = vec3(1, 0, 0);
+            } else {
+                uvw.axis[0] = unit_vector(cross(N, vec3(0, 1, 0)));
+            }
+            uvw.axis[1] = cross(N, uvw.axis[0]);
+
             vec3 local_n = normal_map->value_normal(rec.u, rec.v, rec.p);
             N = unit_vector(uvw.local(local_n));
         }
@@ -328,7 +344,15 @@ class PBRMaterial : public material {
         vec3 N = rec.normal;
         if (normal_map) {
             onb uvw;
-            uvw.build_from_w(N);
+            // 改进的 TBN 构建
+            uvw.axis[2] = N;
+            if (fabs(N.y()) > 0.999) {
+                uvw.axis[0] = vec3(1, 0, 0);
+            } else {
+                uvw.axis[0] = unit_vector(cross(N, vec3(0, 1, 0)));
+            }
+            uvw.axis[1] = cross(N, uvw.axis[0]);
+
             vec3 local_n = normal_map->value_normal(rec.u, rec.v, rec.p);
             N = unit_vector(uvw.local(local_n));
         }
