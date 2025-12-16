@@ -20,9 +20,11 @@ namespace {
         "pbr_materials_gallery", "pbr_reference_scene", "point_light_scene",
         "directional_light_scene", "spot_light_scene", "environment_light_scene",
         "quad_light_scene","cornell_box_nee", "final_scene_nee", "mis_demo",
-        "mis_comparison_scene", "hdr_demo_scene", "materials_showcase",
-        "cornell_box_extended", "interior_lighting_scene", "jewelry_display",
-        "glass_caustics_scene"
+        "mis_comparison_scene", "soft_shadow_demo", "hdr_demo_scene",
+        "materials_showcase","cornell_box_extended", "interior_lighting_scene",
+        "jewelry_display", "jewelry_display_simplified","glass_caustics_scene",
+        "glass_caustics_scene", "glass_caustics_scene", "pbr_floating_spheres_env",
+        "multi_light_demo", "cmy_shadows_demo", "infinity_mirror_demo"
     };
 
     const char* kIntegratorNames[] = {
