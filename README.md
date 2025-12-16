@@ -443,6 +443,7 @@ class Light {
 
 ### 5.5 场景 5：CMY 彩色阴影
 
+![alt text](images/scene41_integrator4_1765884704.png)
 ![alt text](images/scene41_integrator4_1765885765.png)
 
 > 利用光的三原色（红、绿、蓝）叠加原理演示**加色法混合**：
