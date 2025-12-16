@@ -180,6 +180,38 @@ class material {
 
 使用 Cook-Torrance 微表面模型来描述PBR材质，以得到近似物理正确的结果。
 
+![alt text](20230611105830.png)
+
+Cook-Torrance 假设物体表面不是绝对光滑的，而是由无数个微小的、像镜子一样的 **微平面（Microfacets）** 组成的。
+
+Cook-Torrance 是一个 **BRDF（双向反射分布函数）** 的高光（Specular）部分。一个完整的 PBR 材质通常包含漫反射和高光反射两部分：
+
+$$ f_r = k_d f_{diffuse} + k_s f_{specular} $$
+
+其中 **$f_{specular}$** 就是 Cook-Torrance 的核心公式：
+
+$$ f_{specular} = \frac{D \cdot F \cdot G}{4 (\omega_o \cdot n) (\omega_i \cdot n)} $$
+
+**公式中的变量含义：**
+*   $\omega_i$：光照方向（Light vector, $l$）
+*   $\omega_o$：观察方向（View vector, $v$）
+*   $n$：宏观表面法线
+*   $D, F, G$：三个核心物理项，法线分布函数，菲涅尔方程与几何函数。
+*   分母 $4 (\omega_o \cdot n) (\omega_i \cdot n)$：用于校正从微观几何体转换到宏观表面时的数学变换因子。
+
+直接通过这些系数来定义PBR材质较为困难且不符合直觉，通常使用粗糙度和金属度来进行描述。
+
+### 2.3 场景展示
+
+![alt text](build/output/scene37_integrator4_1765855502.png)
+###### 这是一个展示了粗糙度和金属度变化的场景。从左到右粗糙度逐渐增大，从上到下金属度逐渐增大。
+
+可以看到，左上角的小球高光清晰锐利，接近塑料的质感；左下角的小球高光相同，但高光颜色为红色，质感更接近金属；而从左向右粗糙度逐渐增大，高光逐渐扩散，变得模糊。
+
+![alt text](build/output/scene13_integrator2_1765866884.png)
+![alt text](build/output/scene14_integrator2_1765867576.png)
+###### PBR材质展示
+
 
 
 

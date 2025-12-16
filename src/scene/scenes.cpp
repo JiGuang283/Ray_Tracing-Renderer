@@ -355,7 +355,7 @@ shared_ptr<hittable> pbr_spheres_grid() {
         }
     }
 
-    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
+    auto light_mat = make_shared<diffuse_light>(color(30, 30, 30));
     // 将主光源移到相机上方 (y=60)，避免遮挡视线
     world.add(make_shared<sphere>(point3(0, 60, 0), 10, light_mat));
     // 调整侧面辅助光源的位置
@@ -1253,6 +1253,59 @@ shared_ptr<hittable> pbr_floating_spheres_env() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
+// Scene 37: PBR Spheres Grid with Explicit Lights (for NEE/MIS)
+shared_ptr<hittable> pbr_spheres_grid_lights() {
+    hittable_list world;
+
+    auto checker = make_shared<checker_texture>(color(0.2, 0.3, 0.1),
+                                                color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000,
+                                  make_shared<lambertian>(checker)));
+
+    int rows = 7;
+    int cols = 7;
+    double spacing = 2.5;
+
+    for (int row = 0; row < rows; ++row) {
+        for (int col = 0; col < cols; ++col) {
+            double metallic_val = (double)row / (rows - 1);
+            double roughness_val = clamp((double)col / (cols - 1), 0.05, 1.0);
+
+            auto albedo = make_shared<solid_color>(0.5, 0.0, 0.0);
+            auto roughness = make_shared<solid_color>(
+                roughness_val, roughness_val, roughness_val);
+            auto metallic = make_shared<solid_color>(metallic_val, metallic_val,
+                                                     metallic_val);
+
+            auto mat = make_shared<PBRMaterial>(albedo, roughness, metallic);
+
+            double x = (col - (cols - 1) / 2.0) * spacing;
+            double z = (row - (rows - 1) / 2.0) * spacing;
+
+            world.add(make_shared<sphere>(point3(x, 1, z), 1.0, mat));
+        }
+    }
+
+    auto light_mat = make_shared<diffuse_light>(color(15, 15, 15));
+
+    // Main Light (Top) - Quad
+    // Center (0, 60, 0), Size 30x30
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(-15, 15, -15, 15, 60, light_mat)));
+
+    // Side Light 1 (Left) - Quad
+    // Center (-20, 10, 20), Size 6x6
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(-23, -17, 17, 23, 10, light_mat)));
+
+    // Side Light 2 (Right) - Quad
+    // Center (20, 10, 20), Size 6x6
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(17, 23, 17, 23, 10, light_mat)));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 SceneConfig select_scene(int scene_id) {
     SceneConfig config;
 
@@ -1363,11 +1416,11 @@ SceneConfig select_scene(int scene_id) {
         config.world = pbr_materials_gallery();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
-        config.samples_per_pixel = 1000;
+        config.samples_per_pixel = 2000;
         config.background = color(0.1, 0.1, 0.1);
         config.lookfrom = point3(0, 10, 20);
         config.lookat = point3(0, 0, 0);
-        config.vfov = 30.0;
+        config.vfov = 25.0;
         break;
 
     case 14:
@@ -1378,7 +1431,7 @@ SceneConfig select_scene(int scene_id) {
         config.background = color(0.05, 0.05, 0.05);
         config.lookfrom = point3(0, 15, 25);
         config.lookat = point3(0, 0, 0);
-        config.vfov = 30.0;
+        config.vfov = 25.0;
         break;
 
     case 15:
@@ -1685,6 +1738,34 @@ SceneConfig select_scene(int scene_id) {
         // 使用 HDR 环境光
         config.lights.push_back(
             make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
+        break;
+
+    case 37: // PBR Spheres Grid with NEE/MIS
+        config.world = pbr_spheres_grid_lights();
+        config.aspect_ratio = 1.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 500;
+        config.background = color(0.05, 0.05, 0.05);
+        config.lookfrom = point3(0, 40, 0);
+        config.lookat = point3(0, 0, 0);
+        config.vup = vec3(0, 0, -1);
+        config.vfov = 25.0;
+
+        // Add QuadLights
+        // Main Light: Q=(-15, 60, -15), u=(30, 0, 0), v=(0, 0, 30)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-15, 60, -15), vec3(30, 0, 0),
+                                   vec3(0, 0, 30), color(15, 15, 15)));
+
+        // Side Light 1: Q=(-23, 10, 17), u=(6, 0, 0), v=(0, 0, 6)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-23, 10, 17), vec3(6, 0, 0),
+                                   vec3(0, 0, 6), color(15, 15, 15)));
+
+        // Side Light 2: Q=(17, 10, 17), u=(6, 0, 0), v=(0, 0, 6)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(17, 10, 17), vec3(6, 0, 0),
+                                   vec3(0, 0, 6), color(15, 15, 15)));
         break;
 
     case 10:
