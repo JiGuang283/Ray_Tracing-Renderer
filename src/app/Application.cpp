@@ -11,21 +11,61 @@ namespace {
     constexpr double kTextureUpdateInterval = 1.0 / 30.0;
     constexpr int kMaxLogs = 100;
     constexpr int kMinImageWidth = 64;
-    constexpr int kDefaultLutSize = 4096;
+    constexpr static int kDefaultLutSize = 4096;
 
     const char* kSceneNames[] = {
-        "random_scene", "example_light_scene", "two_spheres", "pbr_test_scene",
-        "two_perlin_spheres", "earth", "simple_light", "cornell_box",
-        "cornell_smoke", "final_scene", "pbr_test_scene", "pbr_spheres_grid",
-        "pbr_materials_gallery", "pbr_reference_scene", "point_light_scene",
-        "directional_light_scene", "spot_light_scene", "environment_light_scene",
-        "quad_light_scene","cornell_box_nee", "final_scene_nee", "mis_demo",
-        "mis_comparison_scene", "soft_shadow_demo", "hdr_demo_scene",
-        "materials_showcase","cornell_box_extended", "interior_lighting_scene",
-        "jewelry_display", "jewelry_display_simplified","glass_caustics_scene",
-        "glass_caustics_scene", "glass_caustics_scene", "pbr_floating_spheres_env",
-        "multi_light_demo", "cmy_shadows_demo", "infinity_mirror_demo"
+        "Random Spheres (Case 1)",          // Index 0
+        "Two Spheres (Case 2)",             // Index 1
+        "Earth (Case 4)",                   // Index 2
+        "Simple Light (Case 5)",            // Index 3
+        "Example Light (Case 6)",           // Index 4
+        "Cornell Box (Case 7)",             // Index 5
+        "Cornell Smoke (Case 8)",           // Index 6
+        "Final Scene Book 1 (Case 9)",      // Index 7
+        "Perlin Spheres (Case 10)",         // Index 8
+        "PBR Test Scene (Case 11)",         // Index 9
+        "PBR Spheres Grid (Case 12)",       // Index 10
+        "PBR Gallery (Case 13)",            // Index 11
+        "PBR Reference (Case 14)",          // Index 12
+        "Point Light (Case 15)",            // Index 13
+        "MIS Demo (Case 16)",               // Index 14
+        "Directional Light (Case 17)",      // Index 15
+        "Spot Light (Case 18)",             // Index 16
+        "Environment Light (Case 19)",      // Index 17
+        "Quad Light (Case 20)",             // Index 18
+        "Cornell Box NEE (Case 21)",        // Index 19
+        "Final Scene NEE (Case 22)",        // Index 20
+        "MIS Comparison (Case 23)",         // Index 21
+        "HDR: Studio (Case 24)",            // Index 22
+        "HDR: Sunset (Case 25)",            // Index 23
+        "HDR: RNL Probe (Case 26)",         // Index 24
+        "HDR: St. Peters (Case 27)",        // Index 25
+        "HDR: Uffizi (Case 28)",            // Index 26
+        "Materials Showcase (Case 30)",     // Index 27
+        "Cornell Extended (Case 31)",       // Index 28
+        "Interior Lighting (Case 32)",      // Index 29
+        "Jewelry Display (Case 33)",        // Index 30
+        "Glass Caustics (Case 34)",         // Index 31
+        "PBR Texture Demo (Case 35)",       // Index 32
+        "PBR Floating Spheres (Case 36)",   // Index 33
+        "PBR Grid Explicit (Case 37)",      // Index 34
+        "Soft Shadow Demo (Case 38)",       // Index 35
+        "Jewelry Simplified (Case 39)",     // Index 36
+        "Multi-Light Demo (Case 40)",       // Index 37
+        "CMY Shadows (Case 41)",            // Index 38
+        "Infinity Mirror (Case 42)"         // Index 39
     };
+
+    // 实际的 Scene ID (传给 select_scene 的参数)
+    const int kSceneIds[] = {
+        1, 2, 4, 5, 6, 7, 8, 9, 10,
+        11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        21, 22, 23, 24, 25, 26, 27, 28,
+        30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42
+    };
+
+    // 确保两个数组大小一致
+    static_assert(IM_ARRAYSIZE(kSceneNames) == IM_ARRAYSIZE(kSceneIds), "Scene Arrays Mismatch!");
 
     const char* kIntegratorNames[] = {
         "Path Integrator", "RR Path Integrator", "PBR Path Integrator",
@@ -56,14 +96,22 @@ Application::Application(int initial_scene_id)
 bool Application::init() {
     log("Initializing Application...");
 
+    // 查找 initial_scene_id 在 kSceneIds 中的索引
+    ui_state_.scene_gui_index = 0; // 默认
+    for (int i = 0; i < IM_ARRAYSIZE(kSceneIds); ++i) {
+        if (kSceneIds[i] == ui_state_.scene_id) {
+            ui_state_.scene_gui_index = i;
+            break;
+        }
+    }
+
+    // 使用新函数来初始化UI状态
+    reset_ui_from_scene_config(ui_state_.scene_id);
+
     SceneConfig cfg = select_scene(ui_state_.scene_id);
     width_ = cfg.image_width;
-    height_ = static_cast<int>(width_ / cfg.aspect_ratio);
 
-    // 初始化 UI 参数
-    ui_state_.vfov = cfg.vfov;
-    ui_state_.aperture = cfg.aperture;
-    ui_state_.focus_dist = cfg.focus_dist;
+    height_ = static_cast<int>(width_ * (static_cast<float>(ui_state_.aspect_h) / ui_state_.aspect_w));
 
     // 初始化图像处理器
     ImageProcessConfig img_cfg;
@@ -205,13 +253,16 @@ RenderConfig Application::create_render_config() {
     SceneConfig scene_cfg = select_scene(ui_state_.scene_id);
 
     RenderConfig config;
+
     config.width = ui_state_.image_width;
+
     config.height = static_cast<int>(config.width *
         static_cast<float>(ui_state_.aspect_h) / ui_state_.aspect_w);
     config.samples_per_pixel = ui_state_.samples_per_pixel;
     config.max_depth = ui_state_.max_depth;
     config.world = scene_cfg.world;
     config.background = scene_cfg.background;
+    config.lights = scene_cfg.lights;
 
     // 创建相机
     float aspect_ratio = static_cast<float>(ui_state_.aspect_w) / ui_state_.aspect_h;
@@ -228,6 +279,35 @@ RenderConfig Application::create_render_config() {
     config.integrator = ui_state_.get_current_integrator();
 
     return config;
+}
+
+void Application::reset_ui_from_scene_config(int scene_id) {
+    // 1. 获取新场景的配置
+    SceneConfig cfg = select_scene(scene_id);
+
+    // 2. 更新UI状态 (ui_state_)
+    ui_state_.vfov = cfg.vfov;
+    ui_state_.aperture = cfg.aperture;
+    ui_state_.focus_dist = cfg.focus_dist;
+    ui_state_.samples_per_pixel = cfg.samples_per_pixel;
+
+    ui_state_.image_width = cfg.image_width;
+
+    // 计算目标高度
+    int target_height = static_cast<int>(cfg.image_width / cfg.aspect_ratio);
+
+    // 将宽高比的分子分母设置为实际像素值，保证 float aspect_ratio 精度无误
+    ui_state_.aspect_w = cfg.image_width;
+    ui_state_.aspect_h = target_height;
+
+    // 自动加载场景推荐的积分器
+    // 如果场景包含 "Explicit Lights" (Case 37, 40等)，最好切换到 NEE 或 MIS
+    if (scene_id >= 20 || scene_id == 15 || scene_id == 16) {
+        // 倾向于使用 MIS 或 NEE
+        if (ui_state_.integrator_idx == 0) { // 如果当前是普通 Path Tracing
+            ui_state_.integrator_idx = 3; // 自动切到 MIS
+        }
+    }
 }
 
 void Application::start_render() {
@@ -393,13 +473,16 @@ void Application::render_control_panel() {
 
     // 1. 场景选择
     ImGui::Text("1. Select Scene");
-    int old_scene = ui_state_.scene_id;
-    if (ImGui::Combo("##Scene", &ui_state_.scene_id, kSceneNames, IM_ARRAYSIZE(kSceneNames))) {
-        if (ui_state_.scene_id != old_scene) {
-            SceneConfig cfg = select_scene(ui_state_.scene_id);
-            ui_state_.vfov = cfg.vfov;
-            ui_state_.aperture = cfg.aperture;
-            ui_state_.focus_dist = cfg.focus_dist;
+    int old_scene = ui_state_.scene_gui_index;
+    if (ImGui::Combo("##Scene", &ui_state_.scene_gui_index, kSceneNames, IM_ARRAYSIZE(kSceneNames))) {
+        if (ui_state_.scene_gui_index != old_scene) {
+            // 1. 从映射数组获取真实的 Scene ID
+            int real_scene_id = kSceneIds[ui_state_.scene_gui_index];
+            // 2. 更新 State
+            ui_state_.scene_id = real_scene_id;
+            // 3. 根据新场景的配置重置 UI 参数
+            reset_ui_from_scene_config(real_scene_id);
+            // 4. 标记需要重启渲染
             ui_state_.restart_render = true;
         }
     }

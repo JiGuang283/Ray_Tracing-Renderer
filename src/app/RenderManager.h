@@ -21,6 +21,7 @@ struct RenderConfig {
     std::shared_ptr<camera> cam;
     color background;
     std::shared_ptr<Integrator> integrator;
+    std::vector<shared_ptr<Light>> lights;
 };
 
 class RenderManager {

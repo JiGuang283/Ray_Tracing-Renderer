@@ -12,6 +12,7 @@
 #include "RenderManager.h"
 #include "ImageProcessor.h"
 #include "PerformanceMonitor.h"
+#include "direct_light_integrator.h"
 #include "path_integrator.h"
 #include "pbr_path_integrator.h"
 #include "rr_path_integrator.h"
@@ -21,7 +22,8 @@
 // UI 状态
 struct UIState {
     // 渲染配置
-    int scene_id = 0;
+    int scene_gui_index = 0; // 对应 kSceneNames 数组的索引 (0, 1, 2...)
+    int scene_id = 0;  // 实际传递给 select_scene 的 ID (1, 2, 4...)
     int samples_per_pixel = 100;
     int max_depth = 50;
     int integrator_idx = 0;
@@ -61,6 +63,7 @@ struct UIState {
             case 1: return std::make_shared<RRPathInterator>();
             case 2: return std::make_shared<PBRPathIntegrator>();
             case 3: return std::make_shared<MISPathIntegrator>();
+            case 4: return std::make_shared<DirectLightIntegrator>();
             default: return std::make_shared<PathIntegrator>();
         }
     }
@@ -98,7 +101,7 @@ class Application {
         // 工具函数
         void save_image();
         void log(const std::string& msg);
-        RenderConfig create_render_config();
+        RenderConfig create_render_config();void reset_ui_from_scene_config(int scene_id);
 
         // 核心组件
         WindowsApp::ptr window_;
