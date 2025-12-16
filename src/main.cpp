@@ -24,6 +24,9 @@ THE SOFTWARE.*/
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <sstream>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <thread>
 
 #include "WindowsApp.h"
@@ -126,6 +129,25 @@ int main(int argc, char *args[]) {
 
     if (renderingThread.joinable()) {
         renderingThread.join();
+    }
+
+    // 创建 output 文件夹（如果不存在）
+    mkdir("output", 0755);
+
+    // 生成带编号的文件名
+    auto now = std::chrono::system_clock::now();
+    auto timestamp = std::chrono::system_clock::to_time_t(now);
+    std::stringstream filename;
+    filename << "output/scene" << std::setfill('0') << std::setw(2) << scene_id
+             << "_integrator" << integrator_id << "_" << timestamp << ".png";
+
+    // 保存渲染结果到图片
+    std::cout << "Saving rendered image..." << std::endl;
+    std::string output_file = filename.str();
+    if (render_buffer->save_to_png(output_file)) {
+        std::cout << "Image saved successfully to " << output_file << std::endl;
+    } else {
+        std::cerr << "Failed to save image to " << output_file << std::endl;
     }
 
     return 0;
