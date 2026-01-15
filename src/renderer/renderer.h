@@ -50,7 +50,10 @@ class Renderer {
 
         std::atomic<int> next_tile_index(0);
 
-        const int num_threads = std::thread::hardware_concurrency();
+        int num_threads = static_cast<int>(std::thread::hardware_concurrency());
+        if (num_threads <= 0) {
+            num_threads = 1;
+        }
         std::vector<std::thread> threads;
 
         auto render_worker = [&]() {

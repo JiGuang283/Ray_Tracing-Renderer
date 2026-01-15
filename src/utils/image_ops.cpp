@@ -315,17 +315,26 @@ namespace ImageOps {
     }
 
     float gamma_lookup(float x) {
-
         if (gamma_lut_.empty()) {
             return clamp_compat(x, 0.0f, 1.0f);
         }
+
         x = (x < 0.0f) ? 0.0f : ((x > 1.0f) ? 1.0f : x);
+
         const int n = static_cast<int>(gamma_lut_.size());
+        if (n < 2) {
+            return x;
+        }
+
         float fidx = x * (n - 1);
         int idx = static_cast<int>(fidx);
-        // 只有极少数浮点误差可能导致越界，保留一个简单的 fast check
+
+        // x==1 时 idx==n-1，避免 idx+1 越界
+        if (idx >= n - 1) {
+            return gamma_lut_[n - 1];
+        }
+
         float t = fidx - idx;
-        // 直接访问
         return gamma_lut_[idx] * (1.0f - t) + gamma_lut_[idx + 1] * t;
     }
 

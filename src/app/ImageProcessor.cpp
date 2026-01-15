@@ -152,7 +152,8 @@ void ImageProcessor::process_rows_simd(
                     vg = _mm_sqrt_ps(vg);
                     vb = _mm_sqrt_ps(vb);
 
-                    uint8_t* dst = &output[(j * width + i) * 4];
+                    // 注意 dst 需要带上 k 的偏移，否则会覆盖前 4 像素
+                    uint8_t* dst = &output[(j * width + i + k) * 4];
                     store_rgba8_sse2(vr, vg, vb, dst);
                 }
             #else
