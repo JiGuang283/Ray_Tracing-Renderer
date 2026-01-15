@@ -113,9 +113,25 @@ namespace ImageOps {
         std::cout << "Image saved successfully to " << full_filename << std::endl;
     }
 
-    void apply_post_processing(std::vector<unsigned char>& image_data, int width, int height, int type) {
+    void apply_post_processing(std::vector<unsigned char>& image_data, int width, int height, int type, float strength) {
         if (image_data.empty()) {
             return;
+        }
+
+        strength = clamp_compat(strength, 0.0f, 1.0f);
+        if (strength <= 0.0f) {
+            return;
+        }
+
+        // 双边滤波内部自带 source 拷贝与混合，避免这里再拷贝一次
+        if (type == 5) {
+            apply_bilateral_filter(image_data, width, height, strength);
+            return;
+        }
+
+        std::vector<unsigned char> original;
+        if (strength < 1.0f) {
+            original = image_data;
         }
 
         const int stride = width * 4;
@@ -293,9 +309,24 @@ namespace ImageOps {
                     row_dst[dst_idx + 3] = row_src[x * 4 + 3];
                 }
             }
-        } else if (type == 5) {
-            // 双边滤波
-            apply_bilateral_filter(image_data, width, height);
+        }
+
+        if (strength < 1.0f) {
+            const float inv = 1.0f - strength;
+
+            #pragma omp parallel for schedule(static)
+            for (int i = 0; i < total_pixels; ++i) {
+                const int idx = i * 4;
+
+                const float r = static_cast<float>(original[idx + 0]) * inv + static_cast<float>(image_data[idx + 0]) * strength;
+                const float g = static_cast<float>(original[idx + 1]) * inv + static_cast<float>(image_data[idx + 1]) * strength;
+                const float b = static_cast<float>(original[idx + 2]) * inv + static_cast<float>(image_data[idx + 2]) * strength;
+
+                image_data[idx + 0] = static_cast<unsigned char>(clamp_compat(r, 0.0f, 255.0f));
+                image_data[idx + 1] = static_cast<unsigned char>(clamp_compat(g, 0.0f, 255.0f));
+                image_data[idx + 2] = static_cast<unsigned char>(clamp_compat(b, 0.0f, 255.0f));
+                image_data[idx + 3] = original[idx + 3];
+            }
         }
     }
 
@@ -369,7 +400,12 @@ namespace ImageOps {
         }
     }
 
-    void apply_bilateral_filter(std::vector<unsigned char>& image_data, int width, int height) {
+    void apply_bilateral_filter(std::vector<unsigned char>& image_data, int width, int height, float strength) {
+        strength = clamp_compat(strength, 0.0f, 1.0f);
+        if (image_data.empty() || strength <= 0.0f) {
+            return;
+        }
+
         // === 参数调整区 ===
         const int radius = 2;         // 核心半径 (2 = 5x5 窗口, 3 = 7x7 窗口)
         const float sigma_s = 2.0f;   // 空间模糊强度 (越大越糊)
@@ -433,9 +469,21 @@ namespace ImageOps {
 
                 // 归一化并写入
                 int dst_idx = (y * width + x) * 4;
-                image_data[dst_idx + 0] = static_cast<unsigned char>(sum_r / total_weight);
-                image_data[dst_idx + 1] = static_cast<unsigned char>(sum_g / total_weight);
-                image_data[dst_idx + 2] = static_cast<unsigned char>(sum_b / total_weight);
+
+                float out_r = sum_r / total_weight;
+                float out_g = sum_g / total_weight;
+                float out_b = sum_b / total_weight;
+
+                if (strength < 1.0f) {
+                    const float inv = 1.0f - strength;
+                    out_r = static_cast<float>(source[center_idx + 0]) * inv + out_r * strength;
+                    out_g = static_cast<float>(source[center_idx + 1]) * inv + out_g * strength;
+                    out_b = static_cast<float>(source[center_idx + 2]) * inv + out_b * strength;
+                }
+
+                image_data[dst_idx + 0] = static_cast<unsigned char>(clamp_compat(out_r, 0.0f, 255.0f));
+                image_data[dst_idx + 1] = static_cast<unsigned char>(clamp_compat(out_g, 0.0f, 255.0f));
+                image_data[dst_idx + 2] = static_cast<unsigned char>(clamp_compat(out_b, 0.0f, 255.0f));
                 image_data[dst_idx + 3] = source[center_idx + 3]; // Alpha
             }
         }

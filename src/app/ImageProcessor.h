@@ -11,6 +11,9 @@ struct ImageProcessConfig {
     float gamma = 2.0f;
     bool enable_post_process = false;
     int post_process_type = 0;  // 0: Blur, 1: Sharpen, etc.
+
+    // 滤镜强度 [0,1]，0=关闭效果，1=全强度
+    float post_process_strength = 1.0f;
 };
 
 class ImageProcessor {

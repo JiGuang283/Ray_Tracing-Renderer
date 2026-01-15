@@ -43,6 +43,7 @@ struct UIState {
     float gamma = 2.0f;
     bool enable_post_process = false;
     int post_process_type = 0;
+    float post_process_strength = 1.0f;
 
     // 状态标志
     bool restart_render = false;

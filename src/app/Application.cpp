@@ -119,6 +119,7 @@ bool Application::init() {
     img_cfg.tone_mapping_type = ui_state_.tone_mapping_type;
     img_cfg.enable_post_process = ui_state_.enable_post_process;
     img_cfg.post_process_type = ui_state_.post_process_type;
+    img_cfg.post_process_strength = ui_state_.post_process_strength;
     image_processor_.update_config(img_cfg);
 
     // 创建窗口
@@ -243,6 +244,7 @@ void Application::update_display() {
         ui_cfg.tone_mapping_type = ui_state_.tone_mapping_type;
         ui_cfg.enable_post_process = ui_state_.enable_post_process; // UI 勾选状态
         ui_cfg.post_process_type = ui_state_.post_process_type;
+        ui_cfg.post_process_strength = ui_state_.post_process_strength;
 
         image_processor_.update_config(ui_cfg);
     }
@@ -595,6 +597,14 @@ void Application::render_control_panel() {
         if (ImGui::Combo("Filter Type", &ui_state_.post_process_type, kPostProcessTypes, IM_ARRAYSIZE(kPostProcessTypes))) {
             ImageProcessConfig cfg = image_processor_.get_config();
             cfg.post_process_type = ui_state_.post_process_type;
+            image_processor_.update_config(cfg);
+            ui_state_.need_display_update = true;
+        }
+
+        // 滤镜强度控制（横条左右滑动）
+        if (ImGui::SliderFloat("Filter Strength", &ui_state_.post_process_strength, 0.0f, 1.0f, "%.2f")) {
+            ImageProcessConfig cfg = image_processor_.get_config();
+            cfg.post_process_strength = ui_state_.post_process_strength;
             image_processor_.update_config(cfg);
             ui_state_.need_display_update = true;
         }

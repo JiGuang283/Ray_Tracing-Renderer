@@ -187,5 +187,5 @@ void ImageProcessor::apply_post_processing(
     int w,
     int h
 )const {
-    ImageOps::apply_post_processing(data, w, h, config_.post_process_type);
+    ImageOps::apply_post_processing(data, w, h, config_.post_process_type, config_.post_process_strength);
 }
