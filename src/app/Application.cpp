@@ -130,6 +130,9 @@ bool Application::init() {
 
     image_data_.resize(width_ * height_ * 4);
 
+    // 分配一份与渲染 buffer 同尺寸的快照，用于 UI 线程读取
+    render_buffer_snapshot_ = std::make_shared<RenderBuffer>(width_, height_);
+
     log("Initialization complete.");
     return true;
 }
@@ -207,6 +210,13 @@ void Application::update_display() {
         return;
     }
 
+    // 拷贝一份快照再做图像处理，避免与渲染线程并发读写同一块内存造成 UB
+    if (!render_buffer_snapshot_ || render_buffer_snapshot_->get_width() != width_ ||
+        render_buffer_snapshot_->get_height() != height_) {
+        render_buffer_snapshot_ = std::make_shared<RenderBuffer>(width_, height_);
+    }
+    buffer->copy_to(*render_buffer_snapshot_);
+
     window_->markCpuStart();
 
     // 1. 获取当前 UI 设置的配置
@@ -237,7 +247,7 @@ void Application::update_display() {
         image_processor_.update_config(ui_cfg);
     }
 
-    image_processor_.process(*buffer, image_data_, width_, height_);
+    image_processor_.process(*render_buffer_snapshot_, image_data_, width_, height_);
 
     window_->markCpuEnd();
     window_->updateTexture(image_data_.data());
@@ -338,6 +348,9 @@ void Application::start_render() {
     height_ = config.height;
     window_->setRenderSize(width_, height_);
     image_data_.resize(width_ * height_ * 4);
+
+    // 重新分配快照尺寸，匹配新渲染分辨率
+    render_buffer_snapshot_ = std::make_shared<RenderBuffer>(width_, height_);
 
     ui_state_.render_start_time = ImGui::GetTime();
 

@@ -115,6 +115,9 @@ class Application {
         int width_ = 0;
         int height_ = 0;
 
+        // 渲染缓冲快照（UI 线程只读快照，避免与渲染线程数据竞争）
+        std::shared_ptr<RenderBuffer> render_buffer_snapshot_;
+
         // 日志
         std::deque<std::string> logs_;
         mutable std::mutex log_mutex_;

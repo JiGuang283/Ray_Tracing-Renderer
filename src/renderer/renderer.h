@@ -37,8 +37,8 @@ class Renderer {
 
         auto start_time = std::chrono::high_resolution_clock::now();
 
-        int image_width = target_buffer.width();
-        int image_height = target_buffer.height();
+        const int image_width = target_buffer.width();
+        const int image_height = target_buffer.height();
 
         constexpr int TILE_SIZE = 16;
 
@@ -74,6 +74,16 @@ class Renderer {
                 int x_end = std::min(x_start + TILE_SIZE, image_width);
                 int y_end = std::min(y_start + TILE_SIZE, image_height);
 
+                const int tile_w = x_end - x_start;
+                const int tile_h = y_end - y_start;
+
+                std::vector<float> tile_r;
+                std::vector<float> tile_g;
+                std::vector<float> tile_b;
+                tile_r.resize(static_cast<size_t>(tile_w) * tile_h);
+                tile_g.resize(static_cast<size_t>(tile_w) * tile_h);
+                tile_b.resize(static_cast<size_t>(tile_w) * tile_h);
+
                 for (int j = y_end - 1; j >= y_start; j--) {
                     for (int i = x_start; i < x_end; i++) {
                         color pixel_color(0, 0, 0);
@@ -86,10 +96,31 @@ class Renderer {
                                     r, *world, background, lights);
                             }
                         }
-                        write_color_to_buffer(target_buffer, i, j, pixel_color,
-                                              m_settings.samples_per_pixel);
+
+                        auto scale = 1.0 / m_settings.samples_per_pixel;
+                        auto r = pixel_color.x() * scale;
+                        auto g = pixel_color.y() * scale;
+                        auto b = pixel_color.z() * scale;
+
+                        if (std::isnan(r)) r = 0.0;
+                        if (std::isnan(g)) g = 0.0;
+                        if (std::isnan(b)) b = 0.0;
+
+                        r = std::max(0.0, r);
+                        g = std::max(0.0, g);
+                        b = std::max(0.0, b);
+
+                        const int lx = i - x_start;
+                        const int ly = j - y_start;
+                        const size_t local_idx = static_cast<size_t>(ly) * tile_w + lx;
+                        tile_r[local_idx] = static_cast<float>(r);
+                        tile_g[local_idx] = static_cast<float>(g);
+                        tile_b[local_idx] = static_cast<float>(b);
                     }
                 }
+
+                target_buffer.commit_tile(x_start, y_start, x_end, y_end, tile_r, tile_g, tile_b);
+
                 ++m_processed_tiles; // 更新已处理的片数
             }
         };
@@ -157,25 +188,6 @@ class Renderer {
     int m_total_tiles;
 
     std::shared_ptr<Integrator> m_integrator;
-
-    void write_color_to_buffer(RenderBuffer &buffer, int x, int y,
-                               color pixel_color, int samples) {
-
-        auto scale = 1.0 / samples;
-        auto r = pixel_color.x() * scale;
-        auto g = pixel_color.y() * scale;
-        auto b = pixel_color.z() * scale;
-
-        if (std::isnan(r)) r = 0.0;
-        if (std::isnan(g)) g = 0.0;
-        if (std::isnan(b)) b = 0.0;
-
-        r = std::max(0.0, r);
-        g = std::max(0.0, g);
-        b = std::max(0.0, b);
-
-        buffer.set_pixel(x, y, color(r, g, b));
-    }
 };
 
 #endif
