@@ -125,9 +125,9 @@ inline void median_filter_avx2(
     int width, int stride,
     const int* offsets
 ) {
-    alignas(32) unsigned char r_data[9][32];
-    alignas(32) unsigned char g_data[9][32];
-    alignas(32) unsigned char b_data[9][32];
+    alignas(32) unsigned char r_data[9][32] = {};
+    alignas(32) unsigned char g_data[9][32] = {};
+    alignas(32) unsigned char b_data[9][32] = {};
 
     const unsigned char* row_src = src_ptr + y * stride;
 
@@ -305,9 +305,9 @@ inline void median_filter_sse2(
     int width, int stride,
     const int* offsets
 ) {
-    alignas(16) unsigned char r_data[9][16];
-    alignas(16) unsigned char g_data[9][16];
-    alignas(16) unsigned char b_data[9][16];
+    alignas(16) unsigned char r_data[9][16] = {};
+    alignas(16) unsigned char g_data[9][16] = {};
+    alignas(16) unsigned char b_data[9][16] = {};
 
     const unsigned char* row_src = src_ptr + y * stride;
 

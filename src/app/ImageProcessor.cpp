@@ -1,9 +1,7 @@
 #include "ImageProcessor.h"
 #include "image_ops.h"
 #include "simd.h"
-#include <future>
 #include <algorithm>
-#include <thread>
 
 #if defined(__AVX2__)
     #include <immintrin.h>
@@ -32,28 +30,9 @@ void ImageProcessor::process(
         output.resize(width * height * 4);
     }
 
-    // 多线程处理
-    int nthreads = std::max(1u, std::thread::hardware_concurrency() - 1);
-    int rows_per_task = (height + nthreads - 1) / nthreads;
-
-    std::vector<std::future<void>> tasks;
-    tasks.reserve(nthreads);
-
-    for (int t = 0; t < nthreads; ++t) {
-        int y0 = t * rows_per_task;
-        int y1 = std::min(height, y0 + rows_per_task);
-        if (y0 >= y1) break;
-
-        tasks.emplace_back(std::async(std::launch::async,
-            [this, &buffer, &output, width, height, y0, y1]() {
-                process_rows_simd(buffer, output, width, height, y0, y1);
-            }
-        ));
-    }
-
-    for (auto& f : tasks) {
-        f.get();
-    }
+    // 用 OpenMP 并行化行处理（如果未开启 OpenMP，pragma 会被忽略，仍可正常工作）。
+    // 这样能避免 std::async/线程池 与 ImageOps 内部 OpenMP 并行叠加导致的超线程。
+    process_rows_simd(buffer, output, width, height, 0, height);
 
     // 应用后处理
     if (config_.enable_post_process) {
@@ -71,6 +50,7 @@ void ImageProcessor::process_rows_simd(
     const auto& gbuf = buffer.g();
     const auto& bbuf = buffer.b();
 
+    #pragma omp parallel for schedule(static)
     for (int j = y_start; j < y_end; ++j) {
         int i = 0;
 

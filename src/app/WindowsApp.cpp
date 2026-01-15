@@ -148,11 +148,8 @@ void WindowsApp::endRender() const {
     // 清除屏幕（黑色背景）
     SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
     SDL_RenderClear(m_renderer);
-    // 把光线追踪的纹理画到底层背景上
-    if (m_texture) {
-        SDL_RenderCopy(m_renderer, m_texture, nullptr, nullptr);
-    }
-    // 将 ImGui 的内容画在最上层
+
+    // 将 ImGui 的内容画在最上层（渲染结果纹理由 ImGui::Image 绘制，避免重复 RenderCopy）
     ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), m_renderer);
     // 交换缓冲区显示
     SDL_RenderPresent(m_renderer);
