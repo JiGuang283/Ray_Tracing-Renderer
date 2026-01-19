@@ -3,241 +3,15 @@
 #include "box.h"
 #include "bvh.h"
 #include "constant_medium.h"
+#include "directional_light.h"
+#include "environmental_light.h"
 #include "hittable_list.h"
 #include "material.h"
 #include "mesh.h"
 #include "moving_sphere.h"
+#include "quad_light.h"
 #include "sphere.h"
-#include "triangle.h"
-
-
-shared_ptr<hittable> pyramid_pointlight_compare_scene() {
-    hittable_list world;
-
-    // Ground
-    auto ground_mat = make_shared<lambertian>(color(0.35, 0.35, 0.35));
-    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
-
-    // "Point light": small emissive sphere (stable & simple)
-    // Put it front-right-above to create strong directional shading.
-    auto light_mat = make_shared<diffuse_light>(color(60, 60, 60));
-    world.add(make_shared<sphere>(point3(3.0, 5.0, 3.5), 0.22, light_mat));
-
-    auto red = make_shared<lambertian>(color(0.85, 0.25, 0.25));
-
-    auto unit_faceN = [](const point3& a, const point3& b, const point3& c) {
-        return unit_vector(cross(b - a, c - a));
-    };
-
-    // Add a tetrahedron (triangular pyramid) centered near c.
-    // smooth=true  -> per-vertex normals (averaged from adjacent face normals)
-    // smooth=false -> flat (face normal)
-    auto add_tetra = [&](const point3& c, double s, bool smooth) {
-        // Geometry: apex + 3 base vertices (tetra-like)
-        point3 p0 = c + point3( 0.0,  1.25 * s,  0.0);     // apex
-        point3 p1 = c + point3(-1.00 * s, 0.00, -0.85 * s);
-        point3 p2 = c + point3( 1.00 * s, 0.00, -0.85 * s);
-        point3 p3 = c + point3( 0.00 * s, 0.00,  1.15 * s);
-
-        if (!smooth) {
-            // Flat shading
-            world.add(make_shared<triangle>(p0, p1, p2, red));
-            world.add(make_shared<triangle>(p0, p2, p3, red));
-            world.add(make_shared<triangle>(p0, p3, p1, red));
-            world.add(make_shared<triangle>(p1, p3, p2, red)); // base
-            return;
-        }
-
-        // --- Face normals for the 4 faces ---
-        vec3 f012 = unit_faceN(p0, p1, p2);
-        vec3 f023 = unit_faceN(p0, p2, p3);
-        vec3 f031 = unit_faceN(p0, p3, p1);
-        vec3 f132 = unit_faceN(p1, p3, p2); // base
-
-        // --- Vertex normals = average of adjacent face normals ---
-        // (This produces much more stable smooth shading than "radial normals")
-        vec3 n0 = unit_vector(f012 + f023 + f031);
-        vec3 n1 = unit_vector(f012 + f031 + f132);
-        vec3 n2 = unit_vector(f012 + f023 + f132);
-        vec3 n3 = unit_vector(f023 + f031 + f132);
-
-        // Helper: force a vertex normal to be in the same hemisphere as the face normal
-        auto hemi = [](const vec3& n, const vec3& face_n) {
-            return (dot(n, face_n) < 0) ? (-n) : n;
-        };
-
-        // For each face, ensure all its vertex normals point to the same hemisphere as that face.
-        // This is crucial to avoid "shadow terminator"-like dark bands on low-poly geometry.
-        vec3 n0_012 = hemi(n0, f012), n1_012 = hemi(n1, f012), n2_012 = hemi(n2, f012);
-        vec3 n0_023 = hemi(n0, f023), n2_023 = hemi(n2, f023), n3_023 = hemi(n3, f023);
-        vec3 n0_031 = hemi(n0, f031), n3_031 = hemi(n3, f031), n1_031 = hemi(n1, f031);
-        vec3 n1_132 = hemi(n1, f132), n3_132 = hemi(n3, f132), n2_132 = hemi(n2, f132);
-
-        // Build triangles with per-vertex normals (interpolation ON)
-        world.add(make_shared<triangle>(p0, p1, p2, n0_012, n1_012, n2_012, red));
-        world.add(make_shared<triangle>(p0, p2, p3, n0_023, n2_023, n3_023, red));
-        world.add(make_shared<triangle>(p0, p3, p1, n0_031, n3_031, n1_031, red));
-        world.add(make_shared<triangle>(p1, p3, p2, n1_132, n3_132, n2_132, red));
-    };
-
-    // Left: smooth
-    add_tetra(point3(-1.8, 0.8, 0.0), 1.15, true);
-
-    // Right: flat
-    add_tetra(point3( 1.8, 0.8, 0.0), 1.15, false);
-
-    return make_shared<bvh_node>(world, 0, 1);
-}
-
-
-
-shared_ptr<hittable> triangle_normal_interp_compare_scene() {
-    hittable_list world;
-
-    // Ground (darker, to avoid washing out contrast)
-    auto ground_mat = make_shared<lambertian>(color(0.35, 0.35, 0.35));
-    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
-
-    // A small, bright side area light -> strong directionality -> gradient becomes obvious
-    // Put it in front-right and slightly above the triangles, so it contributes clear shading.
-    auto side_light = make_shared<diffuse_light>(color(35, 35, 35));
-    // xy_rect(x0,x1, y0,y1, k=z)
-    // This rectangle lies on z = +2.5 plane, facing -Z (by your rect convention).
-    world.add(make_shared<xy_rect>(
-        1.5,  5.0,   // x range (right side)
-        1.2,  4.8,   // y range (above)
-        +2.5,
-        side_light
-    ));
-
-    auto tri_mat = make_shared<lambertian>(color(0.85, 0.25, 0.25));
-
-    // Base triangle (in front of camera, roughly vertical)
-    point3 a0(-1.8, 0.8, 0.0);
-    point3 a1( 0.2, 0.8, 0.0);
-    point3 a2(-0.8, 2.8, 0.0);
-
-    // Deliberately different vertex normals (still mostly "up", but tilted differently)
-    vec3 n0 = unit_vector(vec3(-0.8, 1.0,  0.2));
-    vec3 n1 = unit_vector(vec3( 0.8, 1.0, -0.2));
-    vec3 n2 = unit_vector(vec3( 0.0, 1.0,  1.0));
-
-    // Left: smooth shading (vertex-normal interpolation ON)
-    world.add(make_shared<triangle>(
-        a0, a1, a2,
-        n0, n1, n2,
-        tri_mat,
-        vec2(0, 0), vec2(0, 0), vec2(0, 0),
-        false
-    ));
-
-    // Right: same geometry shifted right, but FLAT shading (vertex-normal interpolation OFF)
-    vec3 shift(2.6, 0.0, 0.0);
-    world.add(make_shared<triangle>(
-        a0 + shift, a1 + shift, a2 + shift,
-        tri_mat
-    ));
-
-    return make_shared<bvh_node>(world, 0, 1);
-}
-
-
-shared_ptr<hittable> triangle_vertex_normal_validation_scene() {
-    hittable_list world;
-
-    // Ground
-    auto ground_mat = make_shared<lambertian>(color(0.6, 0.6, 0.6));
-    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
-
-    // A big soft area light above (keeps scene stable)
-    auto top_light = make_shared<diffuse_light>(color(6, 6, 6));
-    world.add(make_shared<xz_rect>(-8, 8, -8, 8, 6, top_light));
-
-    // A SIDE light that is large enough and (very likely) visible to the camera,
-    // making the vertex-normal gradient much easier to observe.
-    // xy_rect(x0,x1, y0,y1, k=z, material)
-    auto side_light = make_shared<diffuse_light>(color(25, 25, 25));
-    world.add(make_shared<xy_rect>(
-    2.2,  5.0,    // x 往右移出视野
-    2.0,  4.5,    // y 往上移
-    +2.0,
-    side_light
-));
-
-
-
-
-    // Triangle with explicit vertex normals (each vertex normal points differently)
-    auto tri_mat = make_shared<lambertian>(color(0.85, 0.25, 0.25));
-
-    point3 v0(-1.5, 0.8, 0.0);
-    point3 v1( 1.5, 0.8, 0.0);
-    point3 v2( 0.0, 2.8, 0.0);
-
-    // Deliberately different normals to create a visible gradient across the triangle.
-    // (We keep them roughly "upwards" so the surface still faces the camera reasonably.)
-    vec3 n0 = unit_vector(vec3(-0.3, 1.0,  0.2));
-    vec3 n1 = unit_vector(vec3( 0.9, 1.0, -0.1));
-    vec3 n2 = unit_vector(vec3( 0.0, 1.0,  1.0));
-
-    // Use the constructor that enables vertex-normal interpolation.
-    world.add(make_shared<triangle>(v0, v1, v2,
-                                   n0, n1, n2,
-                                   tri_mat,
-                                   vec2(0, 0), vec2(0, 0), vec2(0, 0),
-                                   false));
-
-    return make_shared<bvh_node>(world, 0, 1);
-}
-
-
-
-shared_ptr<hittable> triangle_hit_validation_scene() {
-    hittable_list world;
-
-    // Ground (optional, helps perception)
-    auto ground_mat = make_shared<lambertian>(color(0.6, 0.6, 0.6));
-    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
-
-    // Area light above
-    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
-    world.add(make_shared<xz_rect>(-8, 8, -8, 8, 6, light_mat));
-
-    // One single triangle in front of the camera
-    auto tri_mat = make_shared<lambertian>(color(0.85, 0.25, 0.25)); // reddish
-    point3 v0(-1.5, 0.8, 0.0);
-    point3 v1( 1.5, 0.8, 0.0);
-    point3 v2( 0.0, 2.8, 0.0);
-
-    world.add(make_shared<triangle>(v0, v1, v2, tri_mat));
-
-    // Wrap with BVH for consistency (not required, but fine)
-    return make_shared<bvh_node>(world, 0, 1);
-}
-
-shared_ptr<hittable> triangle_occlusion_validation_scene() {
-    hittable_list world;
-
-    auto ground_mat = make_shared<lambertian>(color(0.6, 0.6, 0.6));
-    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
-
-    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
-    world.add(make_shared<xz_rect>(-8, 8, -8, 8, 6, light_mat));
-
-    // Triangle (placed slightly farther)
-    auto tri_mat = make_shared<lambertian>(color(0.25, 0.35, 0.85)); // bluish
-    point3 v0(-1.8, 0.7, -1.0);
-    point3 v1( 1.8, 0.7, -1.0);
-    point3 v2( 0.0, 3.0, -1.0);
-    world.add(make_shared<triangle>(v0, v1, v2, tri_mat));
-
-    // Occluder sphere (closer to camera, should block part of triangle)
-    auto occ_mat = make_shared<lambertian>(color(0.85, 0.65, 0.20)); // yellowish
-    world.add(make_shared<sphere>(point3(-0.3, 1.6, -0.3), 0.9, occ_mat));
-
-    return make_shared<bvh_node>(world, 0, 1);
-}
-
+#include "spot_light.h"
 
 shared_ptr<hittable> random_scene() {
     hittable_list world;
@@ -582,7 +356,7 @@ shared_ptr<hittable> pbr_spheres_grid() {
         }
     }
 
-    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
+    auto light_mat = make_shared<diffuse_light>(color(30, 30, 30));
     // 将主光源移到相机上方 (y=60)，避免遮挡视线
     world.add(make_shared<sphere>(point3(0, 60, 0), 10, light_mat));
     // 调整侧面辅助光源的位置
@@ -778,20 +552,19 @@ shared_ptr<hittable> mis_demo() {
     auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
     world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
 
-    // Smooth Metal (Roughness 0.05) - BSDF sampling dominates for specular reflection
-    auto smooth_metal = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.9, 0.9, 0.9),
-        make_shared<solid_color>(0.05, 0.05, 0.05),
-        make_shared<solid_color>(1.0, 1.0, 1.0)
-    );
+    // Smooth Metal (Roughness 0.05) - BSDF sampling dominates for specular
+    // reflection
+    auto smooth_metal =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.9, 0.9, 0.9),
+                                 make_shared<solid_color>(0.05, 0.05, 0.05),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
     world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, smooth_metal));
 
     // Rough Metal (Roughness 0.5) - NEE dominates
-    auto rough_metal = make_shared<PBRMaterial>(
-        make_shared<solid_color>(0.9, 0.9, 0.9),
-        make_shared<solid_color>(0.5, 0.5, 0.5),
-        make_shared<solid_color>(1.0, 1.0, 1.0)
-    );
+    auto rough_metal =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.9, 0.9, 0.9),
+                                 make_shared<solid_color>(0.5, 0.5, 0.5),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
     world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, rough_metal));
 
     // Diffuse - NEE dominates
@@ -805,363 +578,947 @@ shared_ptr<hittable> mis_demo() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
-shared_ptr<hittable> mesh_demo_scene() {
+shared_ptr<hittable> mis_comparison_scene() {
     hittable_list world;
 
-    // Ground
     auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
     world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
 
-    // Bunny material
-    auto bunny_mat = make_shared<lambertian>(color(0.8, 0.3, 0.3));
+    // 1. Smooth Metal (Roughness 0.001) - NEE struggles with Large Light, BSDF
+    // wins
+    auto smooth_metal = make_shared<PBRMaterial>(
+        make_shared<solid_color>(0.9, 0.6, 0.2), // Gold
+        make_shared<solid_color>(0.001, 0.001, 0.001),
+        make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(-2.5, 1, 0), 1.0, smooth_metal));
 
-    // Bunny transform (scale up a lot; bunny is tiny in original units)
-    // 用 uniform scale，避免法线/光照因为非均匀缩放变怪
-    const vec3 bunny_scale(20.0, 20.0, 20.0);
+    // 2. Rough Metal (Roughness 0.4) - NEE is fine
+    auto rough_metal = make_shared<PBRMaterial>(
+        make_shared<solid_color>(0.8, 0.8, 0.8), // Silver
+        make_shared<solid_color>(0.4, 0.4, 0.4),
+        make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, rough_metal));
 
-    // 放在地面上：y 方向稍微抬一点点，避免穿地（不同 bunny 文件底部可能略不同）
-    const vec3 bunny_pos(0.0, -0.3, 0.0);
+    // 3. Glass (Transmission)
+    auto glass = make_shared<dielectric>(1.5);
+    world.add(make_shared<sphere>(point3(2.5, 1, 0), 1.0, glass));
 
-    // Load bunny (build BVH inside mesh; try to use vertex normals if present)
-    auto bunny = mesh::load_from_obj("assets/stanford bunny.obj",
-                                     bunny_mat,
-                                     bunny_pos,
-                                     bunny_scale,
-                                     true,   // build_bvh
-                                     true);  // use_vertex_normals
-    if (bunny) {
-        world.add(bunny);
-    }
+    // Lights are added in select_scene via config.lights
+    // But we need visual representation here
 
-    // World BVH
+    // Large Area Light (Top)
+    auto light_mat = make_shared<diffuse_light>(color(5, 5, 5));
+    // Centered at (0, 10, 0), size 20x20
+    // Using xz_rect for top light (y is constant)
+    // xz_rect normal is (0, 1, 0) (up), so we need to flip it to face down
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(-10, 10, -10, 10, 10, light_mat)));
+
+    // Small Intense Light (Right Side)
+    auto small_light_mat = make_shared<diffuse_light>(color(50, 50, 50));
+    // Centered at (6, 4, 2), size 0.5x0.5 facing -X
+    // Using yz_rect for side light (x is constant)
+    // yz_rect normal is (1, 0, 0) (right), so we need to flip it to face left
+    // (-X)
+    world.add(make_shared<flip_face>(
+        make_shared<yz_rect>(3.75, 4.25, 1.75, 2.25, 6, small_light_mat)));
+
     return make_shared<bvh_node>(world, 0, 1);
 }
 
-shared_ptr<hittable> mesh_monkey_scene() {
+shared_ptr<hittable> soft_shadow_demo() {
     hittable_list world;
 
-    // Ground
-    auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    // 1. 地面 (接收阴影)
+    auto ground_mat = make_shared<lambertian>(color(0.8, 0.8, 0.8));
     world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
 
-    // Bunny material
-    auto bunny_mat = make_shared<lambertian>(color(0.8, 0.3, 0.3));
+    // 2. 悬浮球体 (产生明显的软阴影)
+    // 离地面越高，光源越大，半影区(Penumbra)越明显
+    auto red_mat = make_shared<lambertian>(color(0.8, 0.2, 0.2));
+    world.add(make_shared<sphere>(point3(0, 2, 0), 1.0, red_mat));
 
-    // Bunny transform (scale up a lot; bunny is tiny in original units)
-    // 用 uniform scale，避免法线/光照因为非均匀缩放变怪
-    const vec3 bunny_scale(1.0, 1.0, 1.0);
+    // 3. 贴近地面的立方体 (阴影较硬)
+    auto blue_mat = make_shared<lambertian>(color(0.2, 0.2, 0.8));
+    world.add(make_shared<box>(point3(-4, 0, -1), point3(-2, 2, 1), blue_mat));
 
-    // 放在地面上：y 方向稍微抬一点点，避免穿地（不同 bunny 文件底部可能略不同）
-    const vec3 bunny_pos(0.0, 1.5, 0.0);
+    // 4. 金属球 (反射面光源形状)
+    auto metal_mat = make_shared<metal>(color(0.8, 0.8, 0.8), 0.1);
+    world.add(make_shared<sphere>(point3(3.5, 1, 0), 1.0, metal_mat));
 
-    // Load bunny (build BVH inside mesh; try to use vertex normals if present)
-    auto bunny = mesh::load_from_obj("assets/Suzanne.obj",
-                                     bunny_mat,
-                                     bunny_pos,
-                                     bunny_scale,
-                                     true,   // build_bvh
-                                     true);  // use_vertex_normals
-    if (bunny) {
-        world.add(bunny);
-    }
+    // 5. 可见的面光源几何体 (用于直接观察)
+    // 光源参数: Center(0, 8, 0), Size 4x4
+    // Corner Q = (-2, 8, -2), u = (4, 0, 0), v = (0, 0, 4)
+    auto light_emit = make_shared<diffuse_light>(color(10, 10, 10));
+    // 注意：xz_rect 默认法线向上(0,1,0)，我们需要它向下照，所以用 flip_face
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(-2, 2, -2, 2, 8, light_emit)));
 
-    // World BVH
     return make_shared<bvh_node>(world, 0, 1);
 }
 
+shared_ptr<hittable> hdr_demo_scene() {
+    hittable_list world;
 
-shared_ptr<hittable> cornell_box_suzanne_fixed() {
+    // 悬空球体展示
+    // 1. 完美镜面 (Chrome)
+    auto chrome = make_shared<metal>(color(0.9, 0.9, 0.9), 0.0);
+    world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, chrome));
+
+    // 2. 粗糙金属 (Rough Gold)
+    auto rough_gold = make_shared<PBRMaterial>(
+        make_shared<solid_color>(1.0, 0.71, 0.29), // Gold
+        make_shared<solid_color>(0.2, 0.2, 0.2),   // Roughness
+        make_shared<solid_color>(1.0, 1.0, 1.0));  // Metallic
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, rough_gold));
+
+    // 3. 玻璃 (Glass)
+    auto glass = make_shared<dielectric>(1.5);
+    world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, glass));
+
+    // 4. 漫反射 (Matte White)
+    // auto matte = make_shared<lambertian>(color(0.8, 0.8, 0.8));
+    // world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, matte)); // 地面
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> directional_light_scene() {
     hittable_list objects;
 
-    auto red   = make_shared<lambertian>(color(.65, .05, .05));
-    auto white = make_shared<lambertian>(color(.73, .73, .73));
-    auto green = make_shared<lambertian>(color(.12, .45, .15));
+    // Ground
+    auto ground_material = make_shared<lambertian>(color(0.8, 0.8, 0.8));
+    objects.add(
+        make_shared<sphere>(point3(0, -1000, 0), 1000, ground_material));
 
-    // --- Cornell box walls ---
-    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 555, green));
-    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 0, red));
+    // Identical boxes to demonstrate parallel shadows
+    auto mat_red = make_shared<lambertian>(color(0.8, 0.1, 0.1));
+    auto mat_green = make_shared<lambertian>(color(0.1, 0.8, 0.1));
+    auto mat_blue = make_shared<lambertian>(color(0.1, 0.1, 0.8));
 
-    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 0, white));    // floor
-    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 555, white));  // ceiling
-    objects.add(make_shared<xy_rect>(0, 555, 0, 555, 555, white));  // back
+    // Three tall boxes
+    objects.add(
+        make_shared<box>(point3(-4, 0, -2), point3(-3, 3, -1), mat_red));
+    objects.add(
+        make_shared<box>(point3(-0.5, 0, -2), point3(0.5, 3, -1), mat_green));
+    objects.add(make_shared<box>(point3(3, 0, -2), point3(4, 3, -1), mat_blue));
 
-    // ✅ 灯：保持你现在“正确的矩形灯 + flip_face”的做法，亮度用更温和的 18
-    auto light = make_shared<diffuse_light>(color(3, 3, 3));
-    auto rect_light = make_shared<xz_rect>(113, 443, 127, 432, 554, light);
-    objects.add(make_shared<flip_face>(rect_light));  // 灯面朝下，对盒内发光
+    // Ray Tracing features: Mirror and Glass
+    auto material_metal = make_shared<metal>(color(0.8, 0.8, 0.8), 0.0);
+    objects.add(make_shared<sphere>(point3(-2, 1, 2), 1.0, material_metal));
 
-    // ----------------------------
-    // Suzanne（猴头）：更鲜艳的颜色
-    // ----------------------------
-    // 亮蓝色（你想要黄色也行，比如 color(0.95,0.9,0.15)）
-    auto monkey_mat = make_shared<lambertian>(color(0.20, 0.55, 0.95));
-    const vec3 monkey_scale(90, 90, 90);
+    auto material_glass = make_shared<dielectric>(1.5);
+    objects.add(make_shared<sphere>(point3(2, 1, 2), 1.0, material_glass));
 
-    auto monkey_raw = mesh::load_from_obj(
-        "assets/Suzanne.obj",
-        monkey_mat,
-        vec3(0, 0, 0),      // 不 baked translation
-        monkey_scale,
-        true,
-        true
-    );
-
-    if (monkey_raw) {
-        aabb bb;
-        if (monkey_raw->bounding_box(0, 1, bb)) {
-            double lift = -bb.min().y();                 // 抬到地面
-
-            // 猴子转过来：绕 Y 轴转 180 度
-            auto monkey_rot = make_shared<rotate_y>(monkey_raw, 180);
-
-            // 稍微偏右一点，给兔子让位置
-            vec3 monkey_pos(390, lift, 360);
-            objects.add(make_shared<translate>(monkey_rot, monkey_pos));
-        } else {
-            auto monkey_rot = make_shared<rotate_y>(monkey_raw, 180);
-            objects.add(make_shared<translate>(monkey_rot, vec3(160, 80, 220)));
-        }
-    } else {
-        std::cerr << "failed to load Suzanne.obj\n";
-    }
-
-    // ----------------------------
-    // Stanford Bunny：同样 bbox 自动落地 + 放到左侧
-    // ----------------------------
-    auto bunny_mat = make_shared<lambertian>(color(0.95, 0.90, 0.15)); // 亮黄色
-    // Bunny 原始尺度很小，Cornell 里需要放大很多
-    const vec3 bunny_scale(800, 800, 800);
-
-    auto bunny_raw = mesh::load_from_obj(
-        "assets/stanford bunny.obj",
-        bunny_mat,
-        vec3(0, 0, 0),      // 不 baked translation
-        bunny_scale,
-        true,
-        true               // bunny 通常没 vn，会自动退回 flat，不会出错
-    );
-
-    if (bunny_raw) {
-        aabb bb;
-        if (bunny_raw->bounding_box(0, 1, bb)) {
-            double lift = -bb.min().y();                 // 抬到地面
-
-            // 兔子没有明确“正面”，但统一转一下也无妨（你也可以改成 0）
-            auto bunny_rot = make_shared<rotate_y>(bunny_raw, 180);
-
-            // 放左侧、稍微更靠后一点，避免与猴子重叠
-            vec3 bunny_pos(210, lift, 330);
-            objects.add(make_shared<translate>(bunny_rot, bunny_pos));
-        } else {
-            auto bunny_rot = make_shared<rotate_y>(bunny_raw, 180);
-            objects.add(make_shared<translate>(bunny_rot, vec3(210, 80, 330)));
-        }
-    } else {
-        std::cerr << "failed to load stanford bunny.obj\n";
-    }
+    // Floating sphere to show shadow on ground clearly
+    auto material_diffuse = make_shared<lambertian>(color(0.8, 0.5, 0.2));
+    objects.add(make_shared<sphere>(point3(0, 5, 0), 1.0, material_diffuse));
 
     return make_shared<bvh_node>(objects, 0, 1);
 }
 
+shared_ptr<hittable> spot_light_scene() {
+    hittable_list objects;
 
+    auto ground = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    objects.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground));
 
+    auto white = make_shared<lambertian>(color(0.9, 0.9, 0.9));
+    objects.add(make_shared<sphere>(point3(0, 1, 0), 1, white));
 
+    auto red = make_shared<lambertian>(color(0.8, 0.1, 0.1));
+    objects.add(make_shared<box>(point3(-2, 0, -1), point3(-1, 2, 0), red));
 
-struct ModelFeatureSettings {
-    bool build_bvh = true;
-    bool apply_transform = true;
-    bool use_vertex_normals = true;
-    bool disable_mesh = false;
-    bool duplicate_mesh = true;
-};
+    auto blue = make_shared<lambertian>(color(0.1, 0.1, 0.8));
+    objects.add(make_shared<box>(point3(1, 0, -1), point3(2, 2, 0), blue));
 
-shared_ptr<hittable>
-model_feature_validation_scene(const ModelFeatureSettings &settings) {
-    hittable_list world;
-
-    auto ground_mat = make_shared<lambertian>(color(0.6, 0.6, 0.6));
-    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
-
-    auto area_light = make_shared<diffuse_light>(color(6, 6, 6));
-    world.add(make_shared<xz_rect>(-6, 6, -6, 6, 6, area_light));
-
-    auto matte = make_shared<lambertian>(color(0.75, 0.45, 0.35));
-
-    if (!settings.disable_mesh) {
-        vec3 translation = settings.apply_transform ? vec3(-2.5, 0.0, 0.0)
-                                                    : vec3(0.0, 0.0, 0.0);
-        vec3 scale = settings.apply_transform ? vec3(1.5, 1.5, 1.5)
-                                              : vec3(1.0, 1.0, 1.0);
-
-        auto main_mesh = mesh::load_from_obj("assets/sample_mesh.obj", matte,
-                                             translation, scale, settings.build_bvh,
-                                             settings.use_vertex_normals);
-
-        if (main_mesh) {
-            world.add(main_mesh);
-
-            if (settings.duplicate_mesh) {
-                world.add(make_shared<translate>(main_mesh, vec3(3.5, 0.0, 0.0)));
-            }
-        }
-    } else {
-        world.add(make_shared<sphere>(point3(-2.0, 1.0, 0.0), 1.0, matte));
-        world.add(make_shared<sphere>(point3(1.5, 1.0, 0.0), 1.0, matte));
-    }
-
-    auto mirror = make_shared<metal>(color(0.8, 0.85, 0.9), 0.05);
-    world.add(make_shared<sphere>(point3(-4.0, 1.25, -2.0), 1.0, mirror));
-
-    if (settings.build_bvh) {
-        return make_shared<bvh_node>(world, 0, 1);
-    }
-
-    return make_shared<hittable_list>(world);
+    return make_shared<bvh_node>(objects, 0, 1);
 }
 
-// === NEW: Mesh BVH stress scene (with smooth normal interpolation) ===
-// build_world_bvh: 是否对整个 world 建 BVH（物体级加速）
-// build_mesh_bvh:  是否对“单个锥体的三角集合”建 BVH（三角形级加速）
-// grid_n:          网格边长（总实例数约 grid_n^2）
-shared_ptr<hittable> mesh_bvh_stress_scene(bool build_world_bvh,
-                                           bool build_mesh_bvh,
-                                           int grid_n) {
-    hittable_list world;
+shared_ptr<hittable> environment_light_scene() {
+    hittable_list objects;
+
+    // Metal sphere to show reflection
+    auto material_metal = make_shared<metal>(color(0.8, 0.8, 0.8), 0.0);
+    objects.add(make_shared<sphere>(point3(-2, 1, 0), 1.0, material_metal));
+
+    // Glass sphere to show refraction
+    auto material_glass = make_shared<dielectric>(1.5);
+    objects.add(make_shared<sphere>(point3(0, 1, 0), 1.0, material_glass));
+
+    // Diffuse sphere to show lighting
+    auto material_diffuse = make_shared<lambertian>(color(0.8, 0.5, 0.2));
+    objects.add(make_shared<sphere>(point3(2, 1, 0), 1.0, material_diffuse));
 
     // Ground
-    auto ground_mat = make_shared<lambertian>(color(0.55, 0.55, 0.55));
-    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+    auto ground_material = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    objects.add(
+        make_shared<sphere>(point3(0, -1000, 0), 1000, ground_material));
 
-    // Large area light above (simple + stable)
-    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
-    world.add(make_shared<xz_rect>(-40, 40, -40, 40, 30, light_mat));
+    return make_shared<bvh_node>(objects, 0, 1);
+}
 
-    // ---- Build ONE base pyramid (6 triangles) with per-vertex normal interpolation ----
-    auto mesh_mat = make_shared<lambertian>(color(0.75, 0.45, 0.35));
+shared_ptr<hittable> quad_light_scene() {
+    hittable_list objects;
 
-    auto unit_faceN = [](const point3& a, const point3& b, const point3& c) {
-        return unit_vector(cross(b - a, c - a));
-    };
+    auto ground = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    objects.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground));
 
-    // build a square-base pyramid centered at origin (like your sample obj)
-    // apex: (0,1,0)
-    // base: (-1,0,-1), (1,0,-1), (1,0,1), (-1,0,1)
-    auto build_smooth_pyramid = [&](const vec3& base_translation,
-                                    const vec3& base_scale,
-                                    bool local_build_bvh,
-                                    shared_ptr<material> mat) -> shared_ptr<hittable> {
+    auto sphere_mat = make_shared<lambertian>(color(0.1, 0.2, 0.5));
+    objects.add(make_shared<sphere>(point3(0, 2, 0), 2, sphere_mat));
 
-        // apply transform (scale then translate)
-        auto T = [&](const point3& p) {
-            return point3(p.x() * base_scale.x() + base_translation.x(),
-                          p.y() * base_scale.y() + base_translation.y(),
-                          p.z() * base_scale.z() + base_translation.z());
-        };
+    // Visible light geometry (must match QuadLight parameters)
+    // x: -2 to 2, z: -2 to 2, y: 7
+    // Use flip_face to make the normal point downward (-Y)
+    auto light_mat = make_shared<diffuse_light>(color(15, 15, 15));
+    auto light_rect = make_shared<xz_rect>(-2, 2, -2, 2, 7, light_mat);
+    objects.add(make_shared<flip_face>(light_rect));
 
-        // vertices
-        point3 v0 = T(point3( 0, 1, 0));   // apex
-        point3 v1 = T(point3(-1, 0,-1));
-        point3 v2 = T(point3( 1, 0,-1));
-        point3 v3 = T(point3( 1, 0, 1));
-        point3 v4 = T(point3(-1, 0, 1));
+    return make_shared<bvh_node>(objects, 0, 1);
+}
 
-        // faces (6 triangles)
-        // sides:
-        // (v0,v2,v1), (v0,v3,v2), (v0,v4,v3), (v0,v1,v4)
-        // base (two tris): (v1,v2,v3), (v1,v3,v4)
-        vec3 f021 = unit_faceN(v0, v2, v1);
-        vec3 f032 = unit_faceN(v0, v3, v2);
-        vec3 f043 = unit_faceN(v0, v4, v3);
-        vec3 f014 = unit_faceN(v0, v1, v4);
-        vec3 f123 = unit_faceN(v1, v2, v3);
-        vec3 f134 = unit_faceN(v1, v3, v4);
+shared_ptr<hittable> cornell_box_nee() {
+    hittable_list objects;
 
-        // vertex normals = average of adjacent face normals
-        // adjacency:
-        // v0: all 4 side faces
-        // v1: f021, f014, f123, f134
-        // v2: f021, f032, f123
-        // v3: f032, f043, f123, f134
-        // v4: f043, f014, f134
-        vec3 n0 = unit_vector(f021 + f032 + f043 + f014);
-        vec3 n1 = unit_vector(f021 + f014 + f123 + f134);
-        vec3 n2 = unit_vector(f021 + f032 + f123);
-        vec3 n3 = unit_vector(f032 + f043 + f123 + f134);
-        vec3 n4 = unit_vector(f043 + f014 + f134);
+    auto red = make_shared<lambertian>(color(.65, .05, .05));
+    auto white = make_shared<lambertian>(color(.73, .73, .73));
+    auto green = make_shared<lambertian>(color(.12, .45, .15));
+    auto light = make_shared<diffuse_light>(color(15, 15, 15));
 
-        // force vertex normals to the same hemisphere as the face normal (avoid dark bands)
-        auto hemi = [](const vec3& n, const vec3& face_n) {
-            return (dot(n, face_n) < 0) ? (-n) : n;
-        };
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 555, green));
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 0, red));
+    // Flip face so light emits downward
+    objects.add(make_shared<flip_face>(
+        make_shared<xz_rect>(213, 343, 227, 332, 554, light)));
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 0, white));
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 555, white));
+    objects.add(make_shared<xy_rect>(0, 555, 0, 555, 555, white));
 
-        // build local triangles
-        hittable_list local;
+    shared_ptr<hittable> box1 =
+        make_shared<box>(point3(0, 0, 0), point3(165, 330, 165), white);
+    box1 = make_shared<rotate_y>(box1, 15);
+    box1 = make_shared<translate>(box1, vec3(265, 0, 295));
+    objects.add(box1);
 
-        // side 1: (v0,v2,v1)
-        local.add(make_shared<triangle>(v0, v2, v1,
-            hemi(n0, f021), hemi(n2, f021), hemi(n1, f021), mat));
+    shared_ptr<hittable> box2 =
+        make_shared<box>(point3(0, 0, 0), point3(165, 165, 165), white);
+    box2 = make_shared<rotate_y>(box2, -18);
+    box2 = make_shared<translate>(box2, vec3(130, 0, 65));
+    objects.add(box2);
 
-        // side 2: (v0,v3,v2)
-        local.add(make_shared<triangle>(v0, v3, v2,
-            hemi(n0, f032), hemi(n3, f032), hemi(n2, f032), mat));
+    return make_shared<bvh_node>(objects, 0, 1);
+}
 
-        // side 3: (v0,v4,v3)
-        local.add(make_shared<triangle>(v0, v4, v3,
-            hemi(n0, f043), hemi(n4, f043), hemi(n3, f043), mat));
+shared_ptr<hittable> final_scene_nee() {
+    hittable_list boxes1;
+    auto ground = make_shared<lambertian>(color(0.48, 0.83, 0.53));
 
-        // side 4: (v0,v1,v4)
-        local.add(make_shared<triangle>(v0, v1, v4,
-            hemi(n0, f014), hemi(n1, f014), hemi(n4, f014), mat));
+    const int boxes_per_side = 20;
+    for (int i = 0; i < boxes_per_side; i++) {
+        for (int j = 0; j < boxes_per_side; j++) {
+            auto w = 100.0;
+            auto x0 = -1000.0 + i * w;
+            auto z0 = -1000.0 + j * w;
+            auto y0 = 0.0;
+            auto x1 = x0 + w;
+            auto y1 = random_double(1, 101);
+            auto z1 = z0 + w;
 
-        // base tri 1: (v1,v2,v3)
-        local.add(make_shared<triangle>(v1, v2, v3,
-            hemi(n1, f123), hemi(n2, f123), hemi(n3, f123), mat));
-
-        // base tri 2: (v1,v3,v4)
-        local.add(make_shared<triangle>(v1, v3, v4,
-            hemi(n1, f134), hemi(n3, f134), hemi(n4, f134), mat));
-
-        if (local_build_bvh) {
-            return make_shared<bvh_node>(local, 0.0, 1.0);
-        }
-        return make_shared<hittable_list>(local);
-    };
-
-    // Base pyramid: built at origin; instanced via translate (transform)
-    auto base_pyramid = build_smooth_pyramid(
-        vec3(0.0, 0.0, 0.0),   // translation
-        vec3(1.0, 1.0, 1.0),   // scale
-        build_mesh_bvh,        // local BVH (triangle-level accel)
-        mesh_mat
-    );
-
-    // If something went wrong, fall back (shouldn't)
-    if (!base_pyramid) {
-        auto fallback = make_shared<lambertian>(color(0.4, 0.6, 0.8));
-        base_pyramid = make_shared<sphere>(point3(0, 0.5, 0), 0.5, fallback);
-    }
-
-    // grid instances
-    const double spacing = 2.2;
-    const double start = -0.5 * (grid_n - 1) * spacing;
-
-    for (int i = 0; i < grid_n; ++i) {
-        for (int j = 0; j < grid_n; ++j) {
-            double x = start + i * spacing;
-            double z = start + j * spacing;
-            // Slightly lift it so it doesn't z-fight with ground
-            world.add(make_shared<translate>(base_pyramid, vec3(x, 0.01, z)));
+            boxes1.add(make_shared<box>(point3(x0, y0, z0), point3(x1, y1, z1),
+                                        ground));
         }
     }
 
-    // One glossy reference sphere (helps visually locate)
-    auto mirror = make_shared<metal>(color(0.85, 0.9, 0.95), 0.02);
-    world.add(make_shared<sphere>(point3(start - 3.0, 1.0, start - 3.0), 1.0, mirror));
+    hittable_list objects;
 
-    if (build_world_bvh) {
-        return make_shared<bvh_node>(world, 0.0, 1.0);
+    objects.add(make_shared<bvh_node>(boxes1, 0, 1));
+
+    auto light = make_shared<diffuse_light>(color(7, 7, 7));
+    // Flip face so light emits downward
+    objects.add(make_shared<flip_face>(
+        make_shared<xz_rect>(123, 423, 147, 412, 554, light)));
+
+    auto center1 = point3(400, 400, 200);
+    auto center2 = center1 + vec3(30, 0, 0);
+    auto moving_sphere_material = make_shared<lambertian>(color(0.7, 0.3, 0.1));
+    objects.add(make_shared<moving_sphere>(center1, center2, 0, 1, 50,
+                                           moving_sphere_material));
+
+    objects.add(make_shared<sphere>(point3(260, 150, 45), 50,
+                                    make_shared<dielectric>(1.5)));
+    objects.add(
+        make_shared<sphere>(point3(0, 150, 145), 50,
+                            make_shared<metal>(color(0.8, 0.8, 0.9), 1.0)));
+
+    auto boundary = make_shared<sphere>(point3(360, 150, 145), 70,
+                                        make_shared<dielectric>(1.5));
+    objects.add(boundary);
+    objects.add(
+        make_shared<constant_medium>(boundary, 0.2, color(0.2, 0.4, 0.9)));
+
+    boundary = make_shared<sphere>(point3(0, 0, 0), 5000,
+                                   make_shared<dielectric>(1.5));
+    objects.add(make_shared<constant_medium>(boundary, .0001, color(1, 1, 1)));
+
+    auto emat =
+        make_shared<lambertian>(make_shared<image_texture>("earthmap.jpg"));
+    objects.add(make_shared<sphere>(point3(400, 200, 400), 100, emat));
+
+    auto pertext = make_shared<noise_texture>(0.1);
+    objects.add(make_shared<sphere>(point3(220, 280, 300), 80,
+                                    make_shared<lambertian>(pertext)));
+
+    hittable_list boxes2;
+    auto white = make_shared<lambertian>(color(.73, .73, .73));
+    int ns = 1000;
+    for (int j = 0; j < ns; j++) {
+        boxes2.add(make_shared<sphere>(point3::random(0, 165), 10, white));
     }
-    return make_shared<hittable_list>(world);
+
+    objects.add(make_shared<translate>(
+        make_shared<rotate_y>(make_shared<bvh_node>(boxes2, 0.0, 1.0), 15),
+        vec3(-100, 270, 395)));
+
+    return make_shared<bvh_node>(objects, 0, 1);
+}
+
+// ============================================================================
+// Final Demo Scenes - 最终演示场景
+// ============================================================================
+
+// Scene 1: Materials Showcase - 材质展示场景
+// 展示：反射、折射、菲涅尔效应、PBR金属/非金属
+shared_ptr<hittable> materials_showcase() {
+    hittable_list world;
+
+    // 地面：棋盘格纹理
+    auto checker = make_shared<checker_texture>(color(0.1, 0.1, 0.1),
+                                                color(0.9, 0.9, 0.9));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000,
+                                  make_shared<lambertian>(checker)));
+
+    // 中心：大玻璃球 - 展示折射和全内反射
+    auto glass = make_shared<dielectric>(1.5);
+    world.add(make_shared<sphere>(point3(0, 1.5, 0), 1.5, glass));
+    // 玻璃球内部的小球，增加视觉效果
+    world.add(make_shared<sphere>(point3(0, 1.5, 0), -1.4, glass));
+
+    // 左侧：完美镜面金属球
+    auto mirror = make_shared<metal>(color(0.95, 0.95, 0.95), 0.0);
+    world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, mirror));
+
+    // 右侧：金色PBR金属球
+    auto gold = make_shared<PBRMaterial>(
+        make_shared<solid_color>(1.0, 0.766, 0.336), // Gold albedo
+        make_shared<solid_color>(0.1, 0.1, 0.1),     // Low roughness
+        make_shared<solid_color>(1.0, 1.0, 1.0));    // Full metallic
+    world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, gold));
+
+    // 后排左：铜色粗糙金属
+    auto copper =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.955, 0.638, 0.538),
+                                 make_shared<solid_color>(0.4, 0.4, 0.4),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(-2.5, 0.7, -3), 0.7, copper));
+
+    // 后排中：蓝色塑料（非金属PBR）
+    auto blue_plastic =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.1, 0.2, 0.8),
+                                 make_shared<solid_color>(0.05, 0.05, 0.05),
+                                 make_shared<solid_color>(0.0, 0.0, 0.0));
+    world.add(make_shared<sphere>(point3(0, 0.7, -3), 0.7, blue_plastic));
+
+    // 后排右：红色漫反射
+    auto red_diffuse = make_shared<lambertian>(color(0.8, 0.1, 0.1));
+    world.add(make_shared<sphere>(point3(2.5, 0.7, -3), 0.7, red_diffuse));
+
+    // 前排小球：不同粗糙度的银色金属
+    for (int i = 0; i < 5; ++i) {
+        double roughness = i * 0.25;
+        auto mat = make_shared<PBRMaterial>(
+            make_shared<solid_color>(0.9, 0.9, 0.9),
+            make_shared<solid_color>(roughness, roughness, roughness),
+            make_shared<solid_color>(1.0, 1.0, 1.0));
+        world.add(make_shared<sphere>(point3(-3 + i * 1.5, 0.4, 3), 0.4, mat));
+    }
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+// Scene 2: Cornell Box Extended - 扩展康奈尔盒
+// 展示：软阴影、全局光照、玻璃折射
+shared_ptr<hittable> cornell_box_extended() {
+    hittable_list objects;
+
+    auto red = make_shared<lambertian>(color(.65, .05, .05));
+    auto white = make_shared<lambertian>(color(.73, .73, .73));
+    auto green = make_shared<lambertian>(color(.12, .45, .15));
+    auto light = make_shared<diffuse_light>(color(15, 15, 15));
+
+    // 墙壁
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 555, green)); // 左墙
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 0, red));     // 右墙
+    objects.add(make_shared<flip_face>(
+        make_shared<xz_rect>(213, 343, 227, 332, 554, light)));    // 顶灯
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 0, white));   // 地板
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 555, white)); // 天花板
+    objects.add(make_shared<xy_rect>(0, 555, 0, 555, 555, white)); // 后墙
+
+    // 左侧：高的白色盒子
+    shared_ptr<hittable> box1 =
+        make_shared<box>(point3(0, 0, 0), point3(165, 330, 165), white);
+    box1 = make_shared<rotate_y>(box1, 15);
+    box1 = make_shared<translate>(box1, vec3(265, 0, 295));
+    objects.add(box1);
+
+    // 右侧：玻璃球代替原来的小盒子
+    auto glass = make_shared<dielectric>(1.5);
+    objects.add(make_shared<sphere>(point3(190, 90, 190), 90, glass));
+
+    // 添加一个金属球在盒子上
+    auto gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(1.0, 0.766, 0.336),
+                                 make_shared<solid_color>(0.15, 0.15, 0.15),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    objects.add(make_shared<sphere>(point3(350, 380, 350), 50, gold));
+
+    return make_shared<bvh_node>(objects, 0, 1);
+}
+
+// Scene 3: Interior Lighting Scene - 室内照明场景
+// 展示：多光源、NEE/MIS优势、聚光灯效果
+shared_ptr<hittable> interior_lighting_scene() {
+    hittable_list objects;
+
+    // 地板
+    auto floor_mat = make_shared<PBRMaterial>(
+        make_shared<solid_color>(0.3, 0.2, 0.15), // 木地板色
+        make_shared<solid_color>(0.6, 0.6, 0.6),
+        make_shared<solid_color>(0.0, 0.0, 0.0));
+    objects.add(make_shared<xz_rect>(-10, 10, -10, 10, 0, floor_mat));
+
+    // 后墙
+    auto wall_mat = make_shared<lambertian>(color(0.9, 0.9, 0.85));
+    objects.add(make_shared<xy_rect>(-10, 10, 0, 8, -5, wall_mat));
+
+    // 左墙
+    objects.add(make_shared<yz_rect>(0, 8, -5, 10, -10, wall_mat));
+
+    // 右墙
+    objects.add(make_shared<yz_rect>(0, 8, -5, 10, 10, wall_mat));
+
+    // 天花板
+    auto ceiling_mat = make_shared<lambertian>(color(0.95, 0.95, 0.95));
+    objects.add(make_shared<xz_rect>(-10, 10, -5, 10, 8, ceiling_mat));
+
+    // 中央桌子（简化为一个扁盒子）
+    auto table_mat =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.4, 0.25, 0.1),
+                                 make_shared<solid_color>(0.3, 0.3, 0.3),
+                                 make_shared<solid_color>(0.0, 0.0, 0.0));
+    objects.add(
+        make_shared<box>(point3(-2, 0, -1), point3(2, 1, 3), table_mat));
+
+    // 桌上物品
+    // 1. 镜面金属球
+    auto chrome = make_shared<metal>(color(0.9, 0.9, 0.9), 0.0);
+    objects.add(make_shared<sphere>(point3(-1, 1.5, 1), 0.5, chrome));
+
+    // 2. 玻璃杯（简化为球）
+    auto glass = make_shared<dielectric>(1.5);
+    objects.add(make_shared<sphere>(point3(0.5, 1.4, 1.5), 0.4, glass));
+
+    // 3. 红色花瓶（简化为球）
+    auto red_ceramic =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.7, 0.1, 0.1),
+                                 make_shared<solid_color>(0.2, 0.2, 0.2),
+                                 make_shared<solid_color>(0.0, 0.0, 0.0));
+    objects.add(make_shared<sphere>(point3(1, 1.6, 0.5), 0.6, red_ceramic));
+
+    // 墙上的装饰：小金属球阵列
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            auto metal_mat = make_shared<PBRMaterial>(
+                make_shared<solid_color>(0.8, 0.8, 0.8),
+                make_shared<solid_color>(0.1 + j * 0.2, 0.1 + j * 0.2,
+                                         0.1 + j * 0.2),
+                make_shared<solid_color>(1.0, 1.0, 1.0));
+            objects.add(make_shared<sphere>(
+                point3(-4 + i * 2, 3 + j * 1.2, -4.8), 0.3, metal_mat));
+        }
+    }
+
+    // 天花板灯（发光矩形）
+    auto ceiling_light = make_shared<diffuse_light>(color(8, 8, 7));
+    objects.add(make_shared<flip_face>(
+        make_shared<xz_rect>(-1, 1, 0, 2, 7.99, ceiling_light)));
+
+    return make_shared<bvh_node>(objects, 0, 1);
+}
+
+// Scene 4: Jewelry Display - 珠宝展示台
+// 展示：玻璃折射、金属反射、PBR、HDR照明
+shared_ptr<hittable> jewelry_display() {
+    hittable_list world;
+
+    // 展示台底座
+    auto pedestal_mat = make_shared<PBRMaterial>(
+        make_shared<solid_color>(0.02, 0.02, 0.02), // 近乎黑色
+        make_shared<solid_color>(0.1, 0.1, 0.1),    // 低粗糙度，有光泽
+        make_shared<solid_color>(0.0, 0.0, 0.0));
+    // 圆形底座用多个同心圆球模拟
+    world.add(make_shared<sphere>(point3(0, -100, 0), 100.3, pedestal_mat));
+
+    // 中心：钻石（用玻璃球模拟，折射率高一点）
+    auto diamond = make_shared<dielectric>(2.4); // 钻石折射率约2.4
+    world.add(make_shared<sphere>(point3(0, 1.2, 0), 1.0, diamond));
+    // 内部空心增加闪烁效果
+    world.add(make_shared<sphere>(point3(0, 1.2, 0), -0.6, diamond));
+
+    // 左侧：金戒指（用金色球模拟）
+    auto gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(1.0, 0.766, 0.336),
+                                 make_shared<solid_color>(0.1, 0.1, 0.1),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(-2.5, 0.6, 0), 0.6, gold));
+    // 戒指上的小钻石
+    world.add(make_shared<sphere>(point3(-2.5, 1.25, 0), 0.2, diamond));
+
+    // 右侧：银项链球
+    auto silver =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.97, 0.96, 0.91),
+                                 make_shared<solid_color>(0.15, 0.15, 0.15),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(2.5, 0.5, 0), 0.5, silver));
+
+    // 后排装饰球
+    // 玫瑰金
+    auto rose_gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.92, 0.72, 0.65),
+                                 make_shared<solid_color>(0.2, 0.2, 0.2),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(-1.5, 0.4, -2), 0.4, rose_gold));
+
+    // 铂金
+    auto platinum =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.9, 0.89, 0.87),
+                                 make_shared<solid_color>(0.05, 0.05, 0.05),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(0, 0.35, -2.2), 0.35, platinum));
+
+    // 铜
+    auto copper =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.955, 0.638, 0.538),
+                                 make_shared<solid_color>(0.25, 0.25, 0.25),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(1.5, 0.4, -2), 0.4, copper));
+
+    // 前排小珍珠
+    auto pearl = make_shared<PBRMaterial>(
+        make_shared<solid_color>(0.95, 0.93, 0.88),
+        make_shared<solid_color>(0.3, 0.3, 0.3),
+        make_shared<solid_color>(0.0, 0.0, 0.0)); // 珍珠是非金属
+    for (int i = 0; i < 5; ++i) {
+        world.add(
+            make_shared<sphere>(point3(-1.5 + i * 0.75, 0.2, 2), 0.2, pearl));
+    }
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+// Scene 4 Simplified: Jewelry Display Simplified - 珠宝展示台（简化版）
+// 去掉前方的珍珠，并将钻石从金色小球放下来单独展示
+shared_ptr<hittable> jewelry_display_simplified() {
+    hittable_list world;
+
+    // 展示台底座
+    auto pedestal_mat = make_shared<PBRMaterial>(
+        make_shared<solid_color>(0.02, 0.02, 0.02), // 近乎黑色
+        make_shared<solid_color>(0.1, 0.1, 0.1),    // 低粗糙度，有光泽
+        make_shared<solid_color>(0.0, 0.0, 0.0));
+    // 圆形底座用多个同心圆球模拟
+    world.add(make_shared<sphere>(point3(0, -100, 0), 100.3, pedestal_mat));
+
+    // 中心：钻石（用玻璃球模拟，折射率高一点）
+    auto diamond = make_shared<dielectric>(2.4); // 钻石折射率约2.4
+    world.add(make_shared<sphere>(point3(0, 1.2, 0), 1.0, diamond));
+    // 内部空心增加闪烁效果
+    world.add(make_shared<sphere>(point3(0, 1.2, 0), -0.6, diamond));
+
+    // 左侧：金戒指（用金色球模拟）
+    auto gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(1.0, 0.766, 0.336),
+                                 make_shared<solid_color>(0.1, 0.1, 0.1),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(-2.5, 0.6, 0), 0.6, gold));
+
+    // 戒指上的小钻石 -> 移到地面单独展示
+    // 放在金戒指前面一点，地面上 (y=0.5, radius=0.2) - 调整高度以避免陷入底座
+    world.add(make_shared<sphere>(point3(-2.5, 0.5, 1.5), 0.2, diamond));
+
+    // 右侧：银项链球
+    auto silver =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.97, 0.96, 0.91),
+                                 make_shared<solid_color>(0.15, 0.15, 0.15),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(2.5, 0.5, 0), 0.5, silver));
+
+    // 后排装饰球
+    // 玫瑰金
+    auto rose_gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.92, 0.72, 0.65),
+                                 make_shared<solid_color>(0.2, 0.2, 0.2),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(-1.5, 0.4, -2), 0.4, rose_gold));
+
+    // 铂金
+    auto platinum =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.9, 0.89, 0.87),
+                                 make_shared<solid_color>(0.05, 0.05, 0.05),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(0, 0.35, -2.2), 0.35, platinum));
+
+    // 铜
+    auto copper =
+        make_shared<PBRMaterial>(make_shared<solid_color>(0.955, 0.638, 0.538),
+                                 make_shared<solid_color>(0.25, 0.25, 0.25),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(1.5, 0.4, -2), 0.4, copper));
+
+    // 前排小珍珠 -> 已移除
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+// Scene 5: Glass Caustics Scene - 玻璃焦散场景
+// 展示：玻璃折射、caustics效果、软阴影
+shared_ptr<hittable> glass_caustics_scene() {
+    hittable_list objects;
+
+    // 白色地面，便于观察caustics
+    auto white_ground = make_shared<lambertian>(color(0.9, 0.9, 0.9));
+    objects.add(make_shared<sphere>(point3(0, -1000, 0), 1000, white_ground));
+
+    // 后墙
+    objects.add(make_shared<xy_rect>(-10, 10, 0, 10, -5, white_ground));
+
+    // 大玻璃球
+    auto glass = make_shared<dielectric>(1.5);
+    objects.add(make_shared<sphere>(point3(0, 2, 0), 2, glass));
+
+    // 小玻璃球阵列
+    for (int i = 0; i < 3; ++i) {
+        objects.add(
+            make_shared<sphere>(point3(-3 + i * 3, 0.8, 3), 0.8, glass));
+    }
+
+    // 彩色玻璃球
+    // 红色玻璃（用带颜色的金属模拟彩色玻璃效果）
+    auto red_glass = make_shared<dielectric>(1.5);
+    objects.add(make_shared<sphere>(point3(-4, 1, -2), 1.0, red_glass));
+
+    // 水晶球（高折射率）
+    auto crystal = make_shared<dielectric>(2.0);
+    objects.add(make_shared<sphere>(point3(4, 1.2, -1.5), 1.2, crystal));
+    objects.add(make_shared<sphere>(point3(4, 1.2, -1.5), -1.0, crystal));
+
+    // 金属球作为对比
+    auto mirror = make_shared<metal>(color(0.95, 0.95, 0.95), 0.0);
+    objects.add(make_shared<sphere>(point3(-4, 0.7, 2), 0.7, mirror));
+
+    auto gold =
+        make_shared<PBRMaterial>(make_shared<solid_color>(1.0, 0.766, 0.336),
+                                 make_shared<solid_color>(0.1, 0.1, 0.1),
+                                 make_shared<solid_color>(1.0, 1.0, 1.0));
+    objects.add(make_shared<sphere>(point3(4, 0.6, 2.5), 0.6, gold));
+
+    // 顶部面光源
+    auto light = make_shared<diffuse_light>(color(12, 12, 12));
+    objects.add(
+        make_shared<flip_face>(make_shared<xz_rect>(-3, 3, -3, 3, 10, light)));
+
+    return make_shared<bvh_node>(objects, 0, 1);
+}
+
+// Scene 6: PBR Texture Demo - PBR 贴图演示
+// 展示：加载外部 PBR 贴图 (Wood, Brick, Rust)
+shared_ptr<hittable> pbr_texture_demo() {
+    hittable_list world;
+
+    // 1. Oak Floor (Non-Metal)
+    // 注意：路径相对于 build/ 目录
+    auto oak_albedo =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_diff_1k.png");
+    auto oak_rough =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_rough_1k.png");
+    auto oak_normal =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_nor_dx_1k.png");
+    auto oak_metal =
+        make_shared<solid_color>(0.0, 0.0, 0.0); // Wood is non-metal
+
+    auto mat_oak =
+        make_shared<PBRMaterial>(oak_albedo, oak_rough, oak_metal, oak_normal);
+
+    // Floor plane (20x20)
+    world.add(make_shared<xz_rect>(-10, 10, -10, 10, 0, mat_oak));
+
+    // 2. Brick Wall (Non-Metal)
+    auto brick_albedo =
+        make_shared<image_texture>("tex/brick/red_brick_diff_1k.png");
+    auto brick_rough =
+        make_shared<image_texture>("tex/brick/red_brick_rough_1k.png");
+    auto brick_normal =
+        make_shared<image_texture>("tex/brick/red_brick_nor_dx_1k.png");
+    auto brick_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+
+    auto mat_brick = make_shared<PBRMaterial>(brick_albedo, brick_rough,
+                                              brick_metal, brick_normal);
+
+    // Wall box
+    world.add(
+        make_shared<box>(point3(-5, 0, -5), point3(-2, 3, -2), mat_brick));
+
+    // 3. Rusted Metal Sphere (Metal)
+    auto rust_albedo =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_diff_1k.png");
+    auto rust_rough =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_rough_1k.png");
+    auto rust_metal =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_metal_1k.png");
+    auto rust_normal =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_nor_dx_1k.png");
+
+    auto mat_rust = make_shared<PBRMaterial>(rust_albedo, rust_rough,
+                                             rust_metal, rust_normal);
+
+    world.add(make_shared<sphere>(point3(2, 1.5, 2), 1.5, mat_rust));
+
+    // Lights
+    auto light_mat = make_shared<diffuse_light>(color(15, 15, 15));
+    world.add(make_shared<sphere>(point3(0, 10, 5), 2, light_mat));
+    world.add(make_shared<sphere>(point3(-5, 5, 5), 1, light_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+// Scene 7: PBR Floating Spheres with Environment Light
+// 展示：三个悬浮球体 (Oak, Brick, Rust) + HDR 环境光
+shared_ptr<hittable> pbr_floating_spheres_env() {
+    hittable_list world;
+
+    // 1. Oak Sphere (Left)
+    auto oak_albedo =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_diff_1k.png");
+    auto oak_rough =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_rough_1k.png");
+    auto oak_normal =
+        make_shared<image_texture>("tex/oak/oak_veneer_01_nor_dx_1k.png");
+    auto oak_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+    auto mat_oak =
+        make_shared<PBRMaterial>(oak_albedo, oak_rough, oak_metal, oak_normal);
+
+    world.add(make_shared<sphere>(point3(-3.0, 0, 0), 1.2, mat_oak));
+
+    // 2. Brick Sphere (Middle)
+    auto brick_albedo =
+        make_shared<image_texture>("tex/brick/red_brick_diff_1k.png");
+    auto brick_rough =
+        make_shared<image_texture>("tex/brick/red_brick_rough_1k.png");
+    auto brick_normal =
+        make_shared<image_texture>("tex/brick/red_brick_nor_dx_1k.png");
+    auto brick_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+    auto mat_brick = make_shared<PBRMaterial>(brick_albedo, brick_rough,
+                                              brick_metal, brick_normal);
+
+    world.add(make_shared<sphere>(point3(0, 0, 0), 1.2, mat_brick));
+
+    // 3. Rusted Metal Sphere (Right)
+    auto rust_albedo =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_diff_1k.png");
+    auto rust_rough =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_rough_1k.png");
+    auto rust_metal =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_metal_1k.png");
+    auto rust_normal =
+        make_shared<image_texture>("tex/rust/rusty_metal_04_nor_dx_1k.png");
+    auto mat_rust = make_shared<PBRMaterial>(rust_albedo, rust_rough,
+                                             rust_metal, rust_normal);
+
+    world.add(make_shared<sphere>(point3(3.0, 0, 0), 1.2, mat_rust));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+// Scene 37: PBR Spheres Grid with Explicit Lights (for NEE/MIS)
+shared_ptr<hittable> pbr_spheres_grid_lights() {
+    hittable_list world;
+
+    auto checker = make_shared<checker_texture>(color(0.2, 0.3, 0.1),
+                                                color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000,
+                                  make_shared<lambertian>(checker)));
+
+    int rows = 7;
+    int cols = 7;
+    double spacing = 2.5;
+
+    for (int row = 0; row < rows; ++row) {
+        for (int col = 0; col < cols; ++col) {
+            double metallic_val = (double)row / (rows - 1);
+            double roughness_val = clamp((double)col / (cols - 1), 0.05, 1.0);
+
+            auto albedo = make_shared<solid_color>(0.5, 0.0, 0.0);
+            auto roughness = make_shared<solid_color>(
+                roughness_val, roughness_val, roughness_val);
+            auto metallic = make_shared<solid_color>(metallic_val, metallic_val,
+                                                     metallic_val);
+
+            auto mat = make_shared<PBRMaterial>(albedo, roughness, metallic);
+
+            double x = (col - (cols - 1) / 2.0) * spacing;
+            double z = (row - (rows - 1) / 2.0) * spacing;
+
+            world.add(make_shared<sphere>(point3(x, 1, z), 1.0, mat));
+        }
+    }
+
+    auto light_mat = make_shared<diffuse_light>(color(15, 15, 15));
+
+    // Main Light (Top) - Quad
+    // Center (0, 60, 0), Size 30x30
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(-15, 15, -15, 15, 60, light_mat)));
+
+    // Side Light 1 (Left) - Quad
+    // Center (-20, 10, 20), Size 6x6
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(-23, -17, 17, 23, 10, light_mat)));
+
+    // Side Light 2 (Right) - Quad
+    // Center (20, 10, 20), Size 6x6
+    world.add(make_shared<flip_face>(
+        make_shared<xz_rect>(17, 23, 17, 23, 10, light_mat)));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> multi_light_demo() {
+    hittable_list world;
+
+    // 1. Environment / Stage
+    // Floor: Checker texture
+    auto checker = make_shared<checker_texture>(color(0.1, 0.1, 0.1),
+                                                color(0.5, 0.5, 0.5));
+    auto floor_mat = make_shared<lambertian>(checker);
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, floor_mat));
+
+    // Back Wall (Matte White)
+    auto white_wall = make_shared<lambertian>(color(0.73, 0.73, 0.73));
+    world.add(make_shared<xy_rect>(-10, 10, 0, 10, -5, white_wall));
+
+    // 2. Podiums (Dark Grey Matte)
+    auto podium_mat = make_shared<lambertian>(color(0.2, 0.2, 0.2));
+
+    // Left Podium (Short)
+    world.add(
+        make_shared<box>(point3(-3.5, 0, -1), point3(-1.5, 1, 1), podium_mat));
+
+    // Center Podium (Tall)
+    world.add(make_shared<box>(point3(-1, 0, -1), point3(1, 2, 1), podium_mat));
+
+    // Right Podium (Medium)
+    world.add(
+        make_shared<box>(point3(1.5, 0, -1), point3(3.5, 1.5, 1), podium_mat));
+
+    // 3. Objects
+    // Left: Glass Sphere (on Short Podium)
+    auto glass_mat = make_shared<dielectric>(1.5);
+    world.add(make_shared<sphere>(point3(-2.5, 1.8, 0), 0.8, glass_mat));
+    // Inner bubble for interest
+    world.add(make_shared<sphere>(point3(-2.5, 1.8, 0), -0.6, glass_mat));
+
+    // Center: Gold Sphere (on Tall Podium) - The "Hero" object
+    auto gold_mat =
+        make_shared<metal>(color(1.0, 0.71, 0.29), 0.05); // Slightly rough gold
+    world.add(make_shared<sphere>(point3(0, 2.8, 0), 0.8, gold_mat));
+
+    // Right: Rough Red Sphere (on Medium Podium)
+    auto rough_red = make_shared<lambertian>(color(0.65, 0.05, 0.05));
+    world.add(make_shared<sphere>(point3(2.5, 2.3, 0), 0.8, rough_red));
+
+    // 4. Visible Light Geometry (Quad Light Source)
+    // Positioned top-right, angled towards center
+    // We'll define the actual light in select_scene, this is just the visible
+    // mesh
+    auto light_mat = make_shared<diffuse_light>(color(8, 8, 10)); // Cool white
+    // A panel floating top right: Center approx (4, 6, 2)
+    // Let's make it look like a softbox
+    world.add(
+        make_shared<flip_face>(make_shared<xz_rect>(2, 6, 0, 4, 6, light_mat)));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> cmy_shadows_demo() {
+    hittable_list world;
+
+    // White Wall (Back)
+    auto white_mat = make_shared<lambertian>(color(1.0, 1.0, 1.0));
+    world.add(make_shared<xy_rect>(-10, 10, 0, 10, -2, white_mat));
+
+    // White Floor
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, white_mat));
+
+    // Central Occluder (Sphere)
+    // Placed slightly above ground
+    auto occluder_mat = make_shared<lambertian>(color(1.0, 1.0, 1.0));
+    world.add(make_shared<sphere>(point3(0, 1.5, 2), 1.0, occluder_mat));
+
+    // Rod holding the sphere (optional, for realism)
+    auto rod_mat = make_shared<metal>(color(0.7, 0.7, 0.7), 0.1);
+    world.add(
+        make_shared<box>(point3(-0.1, 0, 1.9), point3(0.1, 0.5, 2.1), rod_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> infinity_mirror_demo() {
+    hittable_list world;
+
+    // Mirror Room
+    auto mirror =
+        make_shared<metal>(color(0.95, 0.95, 0.95), 0.0); // Perfect mirror
+    auto dark_floor = make_shared<lambertian>(color(0.05, 0.05, 0.05));
+
+    // Floor
+    world.add(make_shared<xz_rect>(-5, 5, -5, 5, 0, dark_floor));
+    // Ceiling
+    world.add(make_shared<xz_rect>(-5, 5, -5, 5, 5, mirror));
+    // Back Wall
+    world.add(make_shared<xy_rect>(-5, 5, 0, 5, -5, mirror));
+    // Left Wall
+    world.add(make_shared<yz_rect>(0, 5, -5, 5, -5, mirror));
+    // Right Wall
+    world.add(make_shared<yz_rect>(0, 5, -5, 5, 5, mirror));
+    // Front Wall (behind camera, to close the box)
+    // We leave a gap or make it one-way? Let's just close it.
+    // The camera will be inside.
+    world.add(make_shared<xy_rect>(-5, 5, 0, 5, 5, mirror));
+
+    // Glowing Objects Inside
+    auto light_red = make_shared<diffuse_light>(color(4, 0.5, 0.5));
+    auto light_blue = make_shared<diffuse_light>(color(0.5, 0.5, 4));
+    auto light_green = make_shared<diffuse_light>(color(0.5, 4, 0.5));
+
+    world.add(make_shared<sphere>(point3(-2, 1, 0), 0.5, light_red));
+    world.add(make_shared<sphere>(point3(2, 1, 0), 0.5, light_blue));
+    world.add(make_shared<sphere>(point3(0, 3, -2), 0.5, light_green));
+
+    // Central Object
+    auto chrome = make_shared<metal>(color(0.8, 0.8, 0.8), 0.1);
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, chrome));
+
+    return make_shared<bvh_node>(world, 0, 1);
 }
 
 SceneConfig select_scene(int scene_id) {
@@ -1240,7 +1597,7 @@ SceneConfig select_scene(int scene_id) {
         config.world = final_scene();
         config.aspect_ratio = 1.0;
         config.image_width = 800;
-        config.samples_per_pixel = 10000;
+        config.samples_per_pixel = 500; // 原10000
         config.background = color(0, 0, 0);
         config.lookfrom = point3(478, 278, -600);
         config.lookat = point3(278, 278, 0);
@@ -1274,11 +1631,11 @@ SceneConfig select_scene(int scene_id) {
         config.world = pbr_materials_gallery();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
-        config.samples_per_pixel = 1000;
+        config.samples_per_pixel = 2000;
         config.background = color(0.1, 0.1, 0.1);
         config.lookfrom = point3(0, 10, 20);
         config.lookat = point3(0, 0, 0);
-        config.vfov = 30.0;
+        config.vfov = 25.0;
         break;
 
     case 14:
@@ -1289,14 +1646,14 @@ SceneConfig select_scene(int scene_id) {
         config.background = color(0.05, 0.05, 0.05);
         config.lookfrom = point3(0, 15, 25);
         config.lookat = point3(0, 0, 0);
-        config.vfov = 30.0;
+        config.vfov = 25.0;
         break;
 
     case 15:
         config.world = point_light_scene();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
-        config.samples_per_pixel = 100;
+        config.samples_per_pixel = 1000;
         config.background = color(0.0, 0.0, 0.0);
         config.lookfrom = point3(0, 5, 10);
         config.lookat = point3(0, 1, 0);
@@ -1317,6 +1674,413 @@ SceneConfig select_scene(int scene_id) {
         // Add PointLight (NEE sampling)
         config.lights.push_back(
             make_shared<PointLight>(point3(5, 10, 5), color(100, 100, 100)));
+        break;
+
+    case 17:
+        config.world = directional_light_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 400;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 6, 12);
+        config.lookat = point3(0, 2, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(
+            make_shared<DirectionalLight>(vec3(-1, -1, -0.5), color(3, 3, 3)));
+        break;
+    case 18:
+        config.world = spot_light_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 100;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 5, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(make_shared<SpotLight>(
+            point3(0, 8, 4), vec3(0, -1, -0.5), 20.0, color(2000, 2000, 2000)));
+        break;
+    case 19:
+        config.world = environment_light_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 100;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 2, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(make_shared<EnvironmentLight>("sky.hdr"));
+        break;
+    case 20:
+        config.world = quad_light_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 1000;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 4, 15);
+        config.lookat = point3(0, 3, 0);
+        config.vfov = 50.0;
+        // Add QuadLight (NEE sampling)
+        // Q = (-2, 7, -2), u = (4, 0, 0), v = (0, 0, 4)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-2, 7, -2), vec3(4, 0, 0),
+                                   vec3(0, 0, 4), color(15, 15, 15)));
+        break;
+
+    case 21:
+        config.world = cornell_box_nee();
+        config.aspect_ratio = 1.0;
+        config.image_width = 600;
+        config.samples_per_pixel = 400;
+        config.background = color(0, 0, 0);
+        config.lookfrom = point3(278, 278, -800);
+        config.lookat = point3(278, 278, 0);
+        config.vfov = 40.0;
+        config.aperture = 0.0;
+        // Add QuadLight: xz_rect(213, 343, 227, 332, 554)
+        // Q = (213, 554, 227), u = (130, 0, 0), v = (0, 0, 105)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(213, 554, 227), vec3(130, 0, 0),
+                                   vec3(0, 0, 105), color(15, 15, 15)));
+        break;
+
+    case 22:
+        config.world = final_scene_nee();
+        config.aspect_ratio = 1.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 500;
+        config.background = color(0, 0, 0);
+        config.lookfrom = point3(478, 278, -600);
+        config.lookat = point3(278, 278, 0);
+        config.vfov = 40.0;
+        // Add QuadLight: xz_rect(123, 423, 147, 412, 554)
+        // Q = (123, 554, 147), u = (300, 0, 0), v = (0, 0, 265)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(123, 554, 147), vec3(300, 0, 0),
+                                   vec3(0, 0, 265), color(7, 7, 7)));
+        break;
+
+    case 23:
+        config.world = mis_comparison_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 64; // Low samples to highlight noise
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 3, 8);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 35.0;
+
+        // Large Light (Top)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-10, 10, -10), vec3(20, 0, 0),
+                                   vec3(0, 0, 20), color(5, 5, 5)));
+
+        // Small Light (Right)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(6, 4, 2), vec3(0, 0.5, 0),
+                                   vec3(0, 0, 0.5), color(50, 50, 50)));
+        break;
+
+    case 24: // brown_photostudio_02_4k.hdr
+        config.world = hdr_demo_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 3, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
+        break;
+
+    case 25: // cedar_bridge_sunset_2_4k.hdr
+        config.world = hdr_demo_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 3, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("cedar_bridge_sunset_2_4k.hdr"));
+        break;
+
+    case 26: // rnl_probe.hdr
+        config.world = hdr_demo_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 3, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(make_shared<EnvironmentLight>("rnl_probe.hdr"));
+        break;
+
+    case 27: // stpeters_probe.hdr
+        config.world = hdr_demo_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 3, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("stpeters_probe.hdr"));
+        break;
+
+    case 28: // uffizi_probe.hdr
+        config.world = hdr_demo_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 3, 10);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 30.0;
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("uffizi_probe.hdr"));
+        break;
+
+        // ========================================================================
+        // Final Demo Scenes (30-34)
+        // ========================================================================
+
+    case 30: // Materials Showcase - 材质展示场景
+        config.world = materials_showcase();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 1200;
+        config.samples_per_pixel = 500;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 5, 12);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 35.0;
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
+        break;
+
+    case 31: // Cornell Box Extended - 扩展康奈尔盒
+        config.world = cornell_box_extended();
+        config.aspect_ratio = 1.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 1000;
+        config.background = color(0, 0, 0);
+        config.lookfrom = point3(278, 278, -800);
+        config.lookat = point3(278, 278, 0);
+        config.vfov = 40.0;
+        config.aperture = 0.0;
+        // QuadLight 对应顶部灯
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(213, 554, 227), vec3(130, 0, 0),
+                                   vec3(0, 0, 105), color(15, 15, 15)));
+        break;
+
+    case 32: // Interior Lighting Scene - 室内照明场景
+        config.world = interior_lighting_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 1000;
+        config.samples_per_pixel = 500;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 4, 8);
+        config.lookat = point3(0, 2, 0);
+        config.vfov = 50.0;
+        // 天花板面光源
+        config.lights.push_back(make_shared<QuadLight>(
+            point3(-1, 7.99, 0), vec3(2, 0, 0), vec3(0, 0, 2), color(8, 8, 7)));
+        // 聚光灯照亮桌面
+        config.lights.push_back(make_shared<SpotLight>(
+            point3(0, 6, 4), vec3(0, -1, -0.3), 25.0, color(800, 800, 750)));
+        break;
+
+    case 33: // Jewelry Display - 珠宝展示台 (使用HDR照明)
+        config.world = jewelry_display();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 1200;
+        config.samples_per_pixel = 1000;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 4, 8);
+        config.lookat = point3(0, 0.8, 0);
+        config.vfov = 35.0;
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
+        break;
+
+    case 34: // Glass Caustics Scene - 玻璃焦散场景
+        config.world = glass_caustics_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 1000;
+        config.samples_per_pixel = 800;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 6, 12);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 40.0;
+        // 顶部面光源
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-3, 10, -3), vec3(6, 0, 0),
+                                   vec3(0, 0, 6), color(12, 12, 12)));
+        break;
+
+    case 35: // PBR Texture Demo - PBR 贴图演示
+        config.world = pbr_texture_demo();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 500; // 增加采样数以减少噪点
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 4, 8);
+        config.lookat = point3(0, 1, 0);
+        config.vfov = 40.0;
+
+        // 改用面光源 (QuadLight) 以获得软阴影和更好的 MIS 效果
+        // 位于上方，面积 4x4，强度 25
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-2, 10, -2), vec3(4, 0, 0),
+                                   vec3(0, 0, 4), color(25, 25, 25)));
+        break;
+
+    case 36: // PBR Floating Spheres - 悬浮球体 + HDR
+        config.world = pbr_floating_spheres_env();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 500;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 0, 8);
+        config.lookat = point3(0, 0, 0);
+        config.vfov = 30.0;
+
+        // 使用 HDR 环境光
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
+        break;
+
+    case 37: // PBR Spheres Grid with NEE/MIS
+        config.world = pbr_spheres_grid_lights();
+        config.aspect_ratio = 1.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 500;
+        config.background = color(0.05, 0.05, 0.05);
+        config.lookfrom = point3(0, 40, 0);
+        config.lookat = point3(0, 0, 0);
+        config.vup = vec3(0, 0, -1);
+        config.vfov = 25.0;
+
+        // Add QuadLights
+        // Main Light: Q=(-15, 60, -15), u=(30, 0, 0), v=(0, 0, 30)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-15, 60, -15), vec3(30, 0, 0),
+                                   vec3(0, 0, 30), color(15, 15, 15)));
+
+        // Side Light 1: Q=(-23, 10, 17), u=(6, 0, 0), v=(0, 0, 6)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-23, 10, 17), vec3(6, 0, 0),
+                                   vec3(0, 0, 6), color(15, 15, 15)));
+
+        // Side Light 2: Q=(17, 10, 17), u=(6, 0, 0), v=(0, 0, 6)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(17, 10, 17), vec3(6, 0, 0),
+                                   vec3(0, 0, 6), color(15, 15, 15)));
+        break;
+
+    case 38: // Soft Shadow Demo (Quad Light)
+        config.world = soft_shadow_demo();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 1000;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 6, 12);
+        config.lookat = point3(0, 2, 0);
+        config.vfov = 40.0;
+
+        // Add QuadLight for NEE
+        // Center(0, 8, 0), Size 4x4 -> Q(-2, 8, -2), u(4, 0, 0), v(0, 0, 4)
+        config.lights.push_back(
+            make_shared<QuadLight>(point3(-2, 8, -2), vec3(4, 0, 0),
+                                   vec3(0, 0, 4), color(10, 10, 10)));
+        break;
+
+    case 39: // Jewelry Display Simplified - 珠宝展示台（简化版）
+        config.world = jewelry_display_simplified();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 1200;
+        config.samples_per_pixel = 1000;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 4, 8);
+        config.lookat = point3(0, 0.8, 0);
+        config.vfov = 35.0;
+        config.lights.push_back(
+            make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
+        break;
+
+    case 40: // Multi-Light Demo
+        config.world = multi_light_demo();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 1200;
+        config.samples_per_pixel = 2000; // Increased samples for better quality
+        config.background =
+            color(0.02, 0.02, 0.05); // Very dark blueish background
+        config.lookfrom = point3(0, 5, 14);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 30.0;
+
+        // 1. Spot Light (Main Key Light for Center Gold Sphere)
+        // Positioned high up, targeting the gold sphere (0, 2.8, 0)
+        config.lights.push_back(make_shared<SpotLight>(
+            point3(0, 10, 2), vec3(0, -1, -0.1), 25.0, color(80, 80, 70)));
+
+        // 2. Point Light (Warm Accent for Right Rough Sphere)
+        // Positioned near the right sphere to create dramatic side lighting
+        config.lights.push_back(
+            make_shared<PointLight>(point3(4, 4, 2), color(30, 15, 5)));
+
+        // 3. Quad Light (Cool Fill/Softbox for Left Glass Sphere)
+        // Matches geometry: xz_rect(2, 6, 0, 4, 6) -> Q=(2, 6, 0), u=(4, 0, 0),
+        // v=(0, 0, 4) Note: The geometry was xz_rect(2, 6, 0, 4, 6) which means
+        // x in [2,6], z in [0,4], y=6 Q=(2, 6, 0), u=(4, 0, 0), v=(0, 0, 4)
+        config.lights.push_back(make_shared<QuadLight>(
+            point3(2, 6, 0), vec3(4, 0, 0), vec3(0, 0, 4), color(8, 8, 10)));
+
+        // 4. Directional Light (Rim Light / Moon)
+        // Coming from behind-left
+        config.lights.push_back(make_shared<DirectionalLight>(
+            vec3(1, -0.5, -1), color(0.1, 0.1, 0.3)));
+        break;
+
+    case 41: // CMY Colored Shadows
+        config.world = cmy_shadows_demo();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 1000;
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 2, 8);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 30.0;
+
+        // Three Point Lights in equilateral triangle formation
+        // All at same height (y=5), spread wider for clearer separation
+        // Red (Left)
+        config.lights.push_back(
+            make_shared<PointLight>(point3(-2.5, 5, 5), color(40, 0, 0)));
+        // Green (Back Center) - moved back in Z to create depth separation
+        config.lights.push_back(
+            make_shared<PointLight>(point3(0, 5, 8), color(0, 40, 0)));
+        // Blue (Right)
+        config.lights.push_back(
+            make_shared<PointLight>(point3(2.5, 5, 5), color(0, 0, 40)));
+        break;
+
+    case 42: // Infinity Mirror Room
+        config.world = infinity_mirror_demo();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel =
+            1000; // Needs high samples for deep reflections
+        config.background = color(0.0, 0.0, 0.0);
+        config.lookfrom = point3(0, 2, 4); // Inside the box
+        config.lookat = point3(0, 2, -4);
+        config.vfov = 60.0; // Wide angle
+        // No external lights, lit by emissive spheres
         break;
 
     case 17:

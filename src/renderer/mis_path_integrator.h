@@ -35,7 +35,34 @@ class MISPathIntegrator : public Integrator {
             hit_record rec;
 
             if (!scene.hit(current_ray, 0.001, infinity, rec)) {
-                L += throughput * background;
+                color env_L(0, 0, 0);
+                bool found_env = false;
+
+                for (const auto &light : lights) {
+                    if (light->is_infinite()) {
+                        env_L += light->Le(current_ray);
+                        found_env = true;
+                    }
+                }
+
+                if (!found_env) {
+                    L += throughput * background;
+                } else {
+                    if (depth == 0 || specular_bounce) {
+                        L += throughput * env_L;
+                    } else {
+                        double light_pdf = 0.0;
+                        double light_select_pdf = 1.0 / lights.size();
+                        for (const auto &light : lights) {
+                            light_pdf += light->pdf(current_ray.origin(),
+                                                    current_ray.direction()) *
+                                         light_select_pdf;
+                        }
+                        double mis_weight =
+                            power_heuristic(prev_bsdf_pdf, light_pdf);
+                        L += throughput * env_L * mis_weight;
+                    }
+                }
                 break;
             }
 
@@ -124,7 +151,7 @@ class MISPathIntegrator : public Integrator {
 
   private:
     // Clamping helper to reduce fireflies
-    static color clamp_radiance(const color &L, double max_value = 10.0) {
+    static color clamp_radiance(const color &L, double max_value = 100.0) {
         if (L.x() > max_value || L.y() > max_value || L.z() > max_value) {
             double max_c = std::max({L.x(), L.y(), L.z()});
             if (max_c > max_value) {

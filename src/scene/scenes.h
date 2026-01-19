@@ -45,17 +45,30 @@ shared_ptr<hittable> pbr_spheres_grid();
 shared_ptr<hittable> pbr_materials_gallery();
 shared_ptr<hittable> pbr_reference_scene();
 shared_ptr<hittable> point_light_scene();
+shared_ptr<hittable> directional_light_scene();
+shared_ptr<hittable> spot_light_scene();
+shared_ptr<hittable> environment_light_scene();
+shared_ptr<hittable> quad_light_scene();
+shared_ptr<hittable> cornell_box_nee();
+shared_ptr<hittable> final_scene_nee();
 shared_ptr<hittable> mis_demo();
-shared_ptr<hittable> mesh_demo_scene();
+shared_ptr<hittable> mis_comparison_scene();
+shared_ptr<hittable> soft_shadow_demo();
+shared_ptr<hittable> hdr_demo_scene();
 
-// === Mesh-focused verification scenes (added for testing) ===
-shared_ptr<hittable> mesh_normals_compare_scene();
-shared_ptr<hittable> mesh_transform_gallery_scene();
-shared_ptr<hittable> mesh_bvh_compare_scene();
+// Final Demo Scenes
+shared_ptr<hittable> materials_showcase();
+shared_ptr<hittable> cornell_box_extended();
+shared_ptr<hittable> interior_lighting_scene();
+shared_ptr<hittable> jewelry_display();
+shared_ptr<hittable> jewelry_display_simplified();
+shared_ptr<hittable> glass_caustics_scene();
+shared_ptr<hittable> pbr_texture_demo();
+shared_ptr<hittable> pbr_floating_spheres_env();
+shared_ptr<hittable> multi_light_demo();
 
-// === NEW: Mesh BVH stress scene (large instancing, togglable BVH) ===
-shared_ptr<hittable> mesh_bvh_stress_scene(bool build_world_bvh,
-                                           bool build_mesh_bvh,
-                                           int grid_n = 15);
+// Fun Demos
+shared_ptr<hittable> cmy_shadows_demo();
+shared_ptr<hittable> infinity_mirror_demo();
 
 #endif

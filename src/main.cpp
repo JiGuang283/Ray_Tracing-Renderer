@@ -24,6 +24,9 @@ THE SOFTWARE.*/
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <sstream>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <thread>
 
 #include "WindowsApp.h"
@@ -45,9 +48,14 @@ constexpr double kShutterClose = 1.0;
 
 int main(int argc, char *args[]) {
 
-    int scene_id = 11;
+    int scene_id = 23;
+    int integrator_id = 4; // 0: Path, 1: RR, 2: PBR, 3: NEE, 4: MIS
+
     if (argc > 1) {
         scene_id = std::atoi(args[1]);
+    }
+    if (argc > 2) {
+        integrator_id = std::atoi(args[2]);
     }
 
     SceneConfig config = select_scene(scene_id);
@@ -69,7 +77,28 @@ int main(int argc, char *args[]) {
 
     Renderer renderer;
     renderer.set_samples(config.samples_per_pixel);
-    renderer.set_integrator(misIntegrator);
+
+    switch (integrator_id) {
+    case 0:
+        renderer.set_integrator(integrator);
+        break;
+    case 1:
+        renderer.set_integrator(rrIntegrator);
+        break;
+    case 2:
+        renderer.set_integrator(pbrIntegrator);
+        break;
+    case 3:
+        renderer.set_integrator(dirlightIntegrator);
+        break;
+    case 4:
+        renderer.set_integrator(misIntegrator);
+        break;
+    default:
+        renderer.set_integrator(misIntegrator);
+        break;
+    }
+
     renderer.set_max_depth(50);
 
     // Create window app handle
@@ -100,6 +129,25 @@ int main(int argc, char *args[]) {
 
     if (renderingThread.joinable()) {
         renderingThread.join();
+    }
+
+    // 创建 output 文件夹（如果不存在）
+    mkdir("output", 0755);
+
+    // 生成带编号的文件名
+    auto now = std::chrono::system_clock::now();
+    auto timestamp = std::chrono::system_clock::to_time_t(now);
+    std::stringstream filename;
+    filename << "output/scene" << std::setfill('0') << std::setw(2) << scene_id
+             << "_integrator" << integrator_id << "_" << timestamp << ".png";
+
+    // 保存渲染结果到图片
+    std::cout << "Saving rendered image..." << std::endl;
+    std::string output_file = filename.str();
+    if (render_buffer->save_to_png(output_file)) {
+        std::cout << "Image saved successfully to " << output_file << std::endl;
+    } else {
+        std::cerr << "Failed to save image to " << output_file << std::endl;
     }
 
     return 0;

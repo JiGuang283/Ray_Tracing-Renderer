@@ -10,7 +10,7 @@ class material;
 struct hit_record {
     point3 p;
     vec3 normal;
-    material* mat_ptr;
+    material *mat_ptr;
     double t;
     double u;
     double v;
