@@ -1242,112 +1242,114 @@ shared_ptr<hittable> glass_caustics_scene() {
 
 // Scene 6: PBR Texture Demo - PBR 贴图演示
 // 展示：加载外部 PBR 贴图 (Wood, Brick, Rust)
-shared_ptr<hittable> pbr_texture_demo() {
-    hittable_list world;
+// shared_ptr<hittable> pbr_texture_demo() {
+//     hittable_list world;
 
-    // 1. Oak Floor (Non-Metal)
-    // 注意：路径相对于 build/ 目录
-    auto oak_albedo =
-        make_shared<image_texture>("tex/oak/oak_veneer_01_diff_1k.png");
-    auto oak_rough =
-        make_shared<image_texture>("tex/oak/oak_veneer_01_rough_1k.png");
-    auto oak_normal =
-        make_shared<image_texture>("tex/oak/oak_veneer_01_nor_dx_1k.png");
-    auto oak_metal =
-        make_shared<solid_color>(0.0, 0.0, 0.0); // Wood is non-metal
+//     // 1. Oak Floor (Non-Metal)
+//     // 注意：路径相对于 build/ 目录
+//     auto oak_albedo =
+//         make_shared<image_texture>("tex/oak/oak_veneer_01_diff_1k.png");
+//     auto oak_rough =
+//         make_shared<image_texture>("tex/oak/oak_veneer_01_rough_1k.png");
+//     auto oak_normal =
+//         make_shared<image_texture>("tex/oak/oak_veneer_01_nor_dx_1k.png");
+//     auto oak_metal =
+//         make_shared<solid_color>(0.0, 0.0, 0.0); // Wood is non-metal
 
-    auto mat_oak =
-        make_shared<PBRMaterial>(oak_albedo, oak_rough, oak_metal, oak_normal);
+//     auto mat_oak =
+//         make_shared<PBRMaterial>(oak_albedo, oak_rough, oak_metal,
+//         oak_normal);
 
-    // Floor plane (20x20)
-    world.add(make_shared<xz_rect>(-10, 10, -10, 10, 0, mat_oak));
+//     // Floor plane (20x20)
+//     world.add(make_shared<xz_rect>(-10, 10, -10, 10, 0, mat_oak));
 
-    // 2. Brick Wall (Non-Metal)
-    auto brick_albedo =
-        make_shared<image_texture>("tex/brick/red_brick_diff_1k.png");
-    auto brick_rough =
-        make_shared<image_texture>("tex/brick/red_brick_rough_1k.png");
-    auto brick_normal =
-        make_shared<image_texture>("tex/brick/red_brick_nor_dx_1k.png");
-    auto brick_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+//     // 2. Brick Wall (Non-Metal)
+//     auto brick_albedo =
+//         make_shared<image_texture>("tex/brick/red_brick_diff_1k.png");
+//     auto brick_rough =
+//         make_shared<image_texture>("tex/brick/red_brick_rough_1k.png");
+//     auto brick_normal =
+//         make_shared<image_texture>("tex/brick/red_brick_nor_dx_1k.png");
+//     auto brick_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
 
-    auto mat_brick = make_shared<PBRMaterial>(brick_albedo, brick_rough,
-                                              brick_metal, brick_normal);
+//     auto mat_brick = make_shared<PBRMaterial>(brick_albedo, brick_rough,
+//                                               brick_metal, brick_normal);
 
-    // Wall box
-    world.add(
-        make_shared<box>(point3(-5, 0, -5), point3(-2, 3, -2), mat_brick));
+//     // Wall box
+//     world.add(
+//         make_shared<box>(point3(-5, 0, -5), point3(-2, 3, -2), mat_brick));
 
-    // 3. Rusted Metal Sphere (Metal)
-    auto rust_albedo =
-        make_shared<image_texture>("tex/rust/rusty_metal_04_diff_1k.png");
-    auto rust_rough =
-        make_shared<image_texture>("tex/rust/rusty_metal_04_rough_1k.png");
-    auto rust_metal =
-        make_shared<image_texture>("tex/rust/rusty_metal_04_metal_1k.png");
-    auto rust_normal =
-        make_shared<image_texture>("tex/rust/rusty_metal_04_nor_dx_1k.png");
+//     // 3. Rusted Metal Sphere (Metal)
+//     auto rust_albedo =
+//         make_shared<image_texture>("tex/rust/rusty_metal_04_diff_1k.png");
+//     auto rust_rough =
+//         make_shared<image_texture>("tex/rust/rusty_metal_04_rough_1k.png");
+//     auto rust_metal =
+//         make_shared<image_texture>("tex/rust/rusty_metal_04_metal_1k.png");
+//     auto rust_normal =
+//         make_shared<image_texture>("tex/rust/rusty_metal_04_nor_dx_1k.png");
 
-    auto mat_rust = make_shared<PBRMaterial>(rust_albedo, rust_rough,
-                                             rust_metal, rust_normal);
+//     auto mat_rust = make_shared<PBRMaterial>(rust_albedo, rust_rough,
+//                                              rust_metal, rust_normal);
 
-    world.add(make_shared<sphere>(point3(2, 1.5, 2), 1.5, mat_rust));
+//     world.add(make_shared<sphere>(point3(2, 1.5, 2), 1.5, mat_rust));
 
-    // Lights
-    auto light_mat = make_shared<diffuse_light>(color(15, 15, 15));
-    world.add(make_shared<sphere>(point3(0, 10, 5), 2, light_mat));
-    world.add(make_shared<sphere>(point3(-5, 5, 5), 1, light_mat));
+//     // Lights
+//     auto light_mat = make_shared<diffuse_light>(color(15, 15, 15));
+//     world.add(make_shared<sphere>(point3(0, 10, 5), 2, light_mat));
+//     world.add(make_shared<sphere>(point3(-5, 5, 5), 1, light_mat));
 
-    return make_shared<bvh_node>(world, 0, 1);
-}
+//     return make_shared<bvh_node>(world, 0, 1);
+// }
 
-// Scene 7: PBR Floating Spheres with Environment Light
-// 展示：三个悬浮球体 (Oak, Brick, Rust) + HDR 环境光
-shared_ptr<hittable> pbr_floating_spheres_env() {
-    hittable_list world;
+// // Scene 7: PBR Floating Spheres with Environment Light
+// // 展示：三个悬浮球体 (Oak, Brick, Rust) + HDR 环境光
+// shared_ptr<hittable> pbr_floating_spheres_env() {
+//     hittable_list world;
 
-    // 1. Oak Sphere (Left)
-    auto oak_albedo =
-        make_shared<image_texture>("tex/oak/oak_veneer_01_diff_1k.png");
-    auto oak_rough =
-        make_shared<image_texture>("tex/oak/oak_veneer_01_rough_1k.png");
-    auto oak_normal =
-        make_shared<image_texture>("tex/oak/oak_veneer_01_nor_dx_1k.png");
-    auto oak_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
-    auto mat_oak =
-        make_shared<PBRMaterial>(oak_albedo, oak_rough, oak_metal, oak_normal);
+//     // 1. Oak Sphere (Left)
+//     auto oak_albedo =
+//         make_shared<image_texture>("tex/oak/oak_veneer_01_diff_1k.png");
+//     auto oak_rough =
+//         make_shared<image_texture>("tex/oak/oak_veneer_01_rough_1k.png");
+//     auto oak_normal =
+//         make_shared<image_texture>("tex/oak/oak_veneer_01_nor_dx_1k.png");
+//     auto oak_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+//     auto mat_oak =
+//         make_shared<PBRMaterial>(oak_albedo, oak_rough, oak_metal,
+//         oak_normal);
 
-    world.add(make_shared<sphere>(point3(-3.0, 0, 0), 1.2, mat_oak));
+//     world.add(make_shared<sphere>(point3(-3.0, 0, 0), 1.2, mat_oak));
 
-    // 2. Brick Sphere (Middle)
-    auto brick_albedo =
-        make_shared<image_texture>("tex/brick/red_brick_diff_1k.png");
-    auto brick_rough =
-        make_shared<image_texture>("tex/brick/red_brick_rough_1k.png");
-    auto brick_normal =
-        make_shared<image_texture>("tex/brick/red_brick_nor_dx_1k.png");
-    auto brick_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
-    auto mat_brick = make_shared<PBRMaterial>(brick_albedo, brick_rough,
-                                              brick_metal, brick_normal);
+//     // 2. Brick Sphere (Middle)
+//     auto brick_albedo =
+//         make_shared<image_texture>("tex/brick/red_brick_diff_1k.png");
+//     auto brick_rough =
+//         make_shared<image_texture>("tex/brick/red_brick_rough_1k.png");
+//     auto brick_normal =
+//         make_shared<image_texture>("tex/brick/red_brick_nor_dx_1k.png");
+//     auto brick_metal = make_shared<solid_color>(0.0, 0.0, 0.0);
+//     auto mat_brick = make_shared<PBRMaterial>(brick_albedo, brick_rough,
+//                                               brick_metal, brick_normal);
 
-    world.add(make_shared<sphere>(point3(0, 0, 0), 1.2, mat_brick));
+//     world.add(make_shared<sphere>(point3(0, 0, 0), 1.2, mat_brick));
 
-    // 3. Rusted Metal Sphere (Right)
-    auto rust_albedo =
-        make_shared<image_texture>("tex/rust/rusty_metal_04_diff_1k.png");
-    auto rust_rough =
-        make_shared<image_texture>("tex/rust/rusty_metal_04_rough_1k.png");
-    auto rust_metal =
-        make_shared<image_texture>("tex/rust/rusty_metal_04_metal_1k.png");
-    auto rust_normal =
-        make_shared<image_texture>("tex/rust/rusty_metal_04_nor_dx_1k.png");
-    auto mat_rust = make_shared<PBRMaterial>(rust_albedo, rust_rough,
-                                             rust_metal, rust_normal);
+//     // 3. Rusted Metal Sphere (Right)
+//     auto rust_albedo =
+//         make_shared<image_texture>("tex/rust/rusty_metal_04_diff_1k.png");
+//     auto rust_rough =
+//         make_shared<image_texture>("tex/rust/rusty_metal_04_rough_1k.png");
+//     auto rust_metal =
+//         make_shared<image_texture>("tex/rust/rusty_metal_04_metal_1k.png");
+//     auto rust_normal =
+//         make_shared<image_texture>("tex/rust/rusty_metal_04_nor_dx_1k.png");
+//     auto mat_rust = make_shared<PBRMaterial>(rust_albedo, rust_rough,
+//                                              rust_metal, rust_normal);
 
-    world.add(make_shared<sphere>(point3(3.0, 0, 0), 1.2, mat_rust));
+//     world.add(make_shared<sphere>(point3(3.0, 0, 0), 1.2, mat_rust));
 
-    return make_shared<bvh_node>(world, 0, 1);
-}
+//     return make_shared<bvh_node>(world, 0, 1);
+// }
 
 // Scene 37: PBR Spheres Grid with Explicit Lights (for NEE/MIS)
 shared_ptr<hittable> pbr_spheres_grid_lights() {
@@ -1872,49 +1874,42 @@ shared_ptr<hittable> triangle_normal_interp_compare_scene() {
     auto ground_mat = make_shared<lambertian>(color(0.35, 0.35, 0.35));
     world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
 
-    // A small, bright side area light -> strong directionality -> gradient becomes obvious
-    // Put it in front-right and slightly above the triangles, so it contributes clear shading.
+    // A small, bright side area light -> strong directionality -> gradient
+    // becomes obvious Put it in front-right and slightly above the triangles,
+    // so it contributes clear shading.
     auto side_light = make_shared<diffuse_light>(color(35, 35, 35));
     // xy_rect(x0,x1, y0,y1, k=z)
-    // This rectangle lies on z = +2.5 plane, facing -Z (by your rect convention).
-    world.add(make_shared<xy_rect>(
-        1.5,  5.0,   // x range (right side)
-        1.2,  4.8,   // y range (above)
-        +2.5,
-        side_light
-    ));
+    // This rectangle lies on z = +2.5 plane, facing -Z (by your rect
+    // convention).
+    world.add(make_shared<xy_rect>(1.5, 5.0, // x range (right side)
+                                   1.2, 4.8, // y range (above)
+                                   +2.5, side_light));
 
     auto tri_mat = make_shared<lambertian>(color(0.85, 0.25, 0.25));
 
     // Base triangle (in front of camera, roughly vertical)
     point3 a0(-1.8, 0.8, 0.0);
-    point3 a1( 0.2, 0.8, 0.0);
+    point3 a1(0.2, 0.8, 0.0);
     point3 a2(-0.8, 2.8, 0.0);
 
-    // Deliberately different vertex normals (still mostly "up", but tilted differently)
-    vec3 n0 = unit_vector(vec3(-0.8, 1.0,  0.2));
-    vec3 n1 = unit_vector(vec3( 0.8, 1.0, -0.2));
-    vec3 n2 = unit_vector(vec3( 0.0, 1.0,  1.0));
+    // Deliberately different vertex normals (still mostly "up", but tilted
+    // differently)
+    vec3 n0 = unit_vector(vec3(-0.8, 1.0, 0.2));
+    vec3 n1 = unit_vector(vec3(0.8, 1.0, -0.2));
+    vec3 n2 = unit_vector(vec3(0.0, 1.0, 1.0));
 
     // Left: smooth shading (vertex-normal interpolation ON)
-    world.add(make_shared<triangle>(
-        a0, a1, a2,
-        n0, n1, n2,
-        tri_mat,
-        vec2(0, 0), vec2(0, 0), vec2(0, 0),
-        false
-    ));
+    world.add(make_shared<triangle>(a0, a1, a2, n0, n1, n2, tri_mat, vec2(0, 0),
+                                    vec2(0, 0), vec2(0, 0), false));
 
-    // Right: same geometry shifted right, but FLAT shading (vertex-normal interpolation OFF)
+    // Right: same geometry shifted right, but FLAT shading (vertex-normal
+    // interpolation OFF)
     vec3 shift(2.6, 0.0, 0.0);
-    world.add(make_shared<triangle>(
-        a0 + shift, a1 + shift, a2 + shift,
-        tri_mat
-    ));
+    world.add(
+        make_shared<triangle>(a0 + shift, a1 + shift, a2 + shift, tri_mat));
 
     return make_shared<bvh_node>(world, 0, 1);
 }
-
 
 shared_ptr<hittable> triangle_vertex_normal_validation_scene() {
     hittable_list world;
@@ -1927,44 +1922,35 @@ shared_ptr<hittable> triangle_vertex_normal_validation_scene() {
     auto top_light = make_shared<diffuse_light>(color(6, 6, 6));
     world.add(make_shared<xz_rect>(-8, 8, -8, 8, 6, top_light));
 
-    // A SIDE light that is large enough and (very likely) visible to the camera,
-    // making the vertex-normal gradient much easier to observe.
+    // A SIDE light that is large enough and (very likely) visible to the
+    // camera, making the vertex-normal gradient much easier to observe.
     // xy_rect(x0,x1, y0,y1, k=z, material)
     auto side_light = make_shared<diffuse_light>(color(25, 25, 25));
-    world.add(make_shared<xy_rect>(
-    2.2,  5.0,    // x 往右移出视野
-    2.0,  4.5,    // y 往上移
-    +2.0,
-    side_light
-));
+    world.add(make_shared<xy_rect>(2.2, 5.0, // x 往右移出视野
+                                   2.0, 4.5, // y 往上移
+                                   +2.0, side_light));
 
-
-
-
-    // Triangle with explicit vertex normals (each vertex normal points differently)
+    // Triangle with explicit vertex normals (each vertex normal points
+    // differently)
     auto tri_mat = make_shared<lambertian>(color(0.85, 0.25, 0.25));
 
     point3 v0(-1.5, 0.8, 0.0);
-    point3 v1( 1.5, 0.8, 0.0);
-    point3 v2( 0.0, 2.8, 0.0);
+    point3 v1(1.5, 0.8, 0.0);
+    point3 v2(0.0, 2.8, 0.0);
 
-    // Deliberately different normals to create a visible gradient across the triangle.
-    // (We keep them roughly "upwards" so the surface still faces the camera reasonably.)
-    vec3 n0 = unit_vector(vec3(-0.3, 1.0,  0.2));
-    vec3 n1 = unit_vector(vec3( 0.9, 1.0, -0.1));
-    vec3 n2 = unit_vector(vec3( 0.0, 1.0,  1.0));
+    // Deliberately different normals to create a visible gradient across the
+    // triangle. (We keep them roughly "upwards" so the surface still faces the
+    // camera reasonably.)
+    vec3 n0 = unit_vector(vec3(-0.3, 1.0, 0.2));
+    vec3 n1 = unit_vector(vec3(0.9, 1.0, -0.1));
+    vec3 n2 = unit_vector(vec3(0.0, 1.0, 1.0));
 
     // Use the constructor that enables vertex-normal interpolation.
-    world.add(make_shared<triangle>(v0, v1, v2,
-                                   n0, n1, n2,
-                                   tri_mat,
-                                   vec2(0, 0), vec2(0, 0), vec2(0, 0),
-                                   false));
+    world.add(make_shared<triangle>(v0, v1, v2, n0, n1, n2, tri_mat, vec2(0, 0),
+                                    vec2(0, 0), vec2(0, 0), false));
 
     return make_shared<bvh_node>(world, 0, 1);
 }
-
-
 
 shared_ptr<hittable> triangle_hit_validation_scene() {
     hittable_list world;
@@ -1980,8 +1966,8 @@ shared_ptr<hittable> triangle_hit_validation_scene() {
     // One single triangle in front of the camera
     auto tri_mat = make_shared<lambertian>(color(0.85, 0.25, 0.25)); // reddish
     point3 v0(-1.5, 0.8, 0.0);
-    point3 v1( 1.5, 0.8, 0.0);
-    point3 v2( 0.0, 2.8, 0.0);
+    point3 v1(1.5, 0.8, 0.0);
+    point3 v2(0.0, 2.8, 0.0);
 
     world.add(make_shared<triangle>(v0, v1, v2, tri_mat));
 
@@ -2001,12 +1987,13 @@ shared_ptr<hittable> triangle_occlusion_validation_scene() {
     // Triangle (placed slightly farther)
     auto tri_mat = make_shared<lambertian>(color(0.25, 0.35, 0.85)); // bluish
     point3 v0(-1.8, 0.7, -1.0);
-    point3 v1( 1.8, 0.7, -1.0);
-    point3 v2( 0.0, 3.0, -1.0);
+    point3 v1(1.8, 0.7, -1.0);
+    point3 v2(0.0, 3.0, -1.0);
     world.add(make_shared<triangle>(v0, v1, v2, tri_mat));
 
     // Occluder sphere (closer to camera, should block part of triangle)
-    auto occ_mat = make_shared<lambertian>(color(0.85, 0.65, 0.20)); // yellowish
+    auto occ_mat =
+        make_shared<lambertian>(color(0.85, 0.65, 0.20)); // yellowish
     world.add(make_shared<sphere>(point3(-0.3, 1.6, -0.3), 0.9, occ_mat));
 
     return make_shared<bvh_node>(world, 0, 1);
@@ -2026,19 +2013,19 @@ shared_ptr<hittable> pyramid_pointlight_compare_scene() {
 
     auto red = make_shared<lambertian>(color(0.85, 0.25, 0.25));
 
-    auto unit_faceN = [](const point3& a, const point3& b, const point3& c) {
+    auto unit_faceN = [](const point3 &a, const point3 &b, const point3 &c) {
         return unit_vector(cross(b - a, c - a));
     };
 
     // Add a tetrahedron (triangular pyramid) centered near c.
     // smooth=true  -> per-vertex normals (averaged from adjacent face normals)
     // smooth=false -> flat (face normal)
-    auto add_tetra = [&](const point3& c, double s, bool smooth) {
+    auto add_tetra = [&](const point3 &c, double s, bool smooth) {
         // Geometry: apex + 3 base vertices (tetra-like)
-        point3 p0 = c + point3( 0.0,  1.25 * s,  0.0);     // apex
+        point3 p0 = c + point3(0.0, 1.25 * s, 0.0); // apex
         point3 p1 = c + point3(-1.00 * s, 0.00, -0.85 * s);
-        point3 p2 = c + point3( 1.00 * s, 0.00, -0.85 * s);
-        point3 p3 = c + point3( 0.00 * s, 0.00,  1.15 * s);
+        point3 p2 = c + point3(1.00 * s, 0.00, -0.85 * s);
+        point3 p3 = c + point3(0.00 * s, 0.00, 1.15 * s);
 
         if (!smooth) {
             // Flat shading
@@ -2062,30 +2049,40 @@ shared_ptr<hittable> pyramid_pointlight_compare_scene() {
         vec3 n2 = unit_vector(f012 + f023 + f132);
         vec3 n3 = unit_vector(f023 + f031 + f132);
 
-        // Helper: force a vertex normal to be in the same hemisphere as the face normal
-        auto hemi = [](const vec3& n, const vec3& face_n) {
+        // Helper: force a vertex normal to be in the same hemisphere as the
+        // face normal
+        auto hemi = [](const vec3 &n, const vec3 &face_n) {
             return (dot(n, face_n) < 0) ? (-n) : n;
         };
 
-        // For each face, ensure all its vertex normals point to the same hemisphere as that face.
-        // This is crucial to avoid "shadow terminator"-like dark bands on low-poly geometry.
-        vec3 n0_012 = hemi(n0, f012), n1_012 = hemi(n1, f012), n2_012 = hemi(n2, f012);
-        vec3 n0_023 = hemi(n0, f023), n2_023 = hemi(n2, f023), n3_023 = hemi(n3, f023);
-        vec3 n0_031 = hemi(n0, f031), n3_031 = hemi(n3, f031), n1_031 = hemi(n1, f031);
-        vec3 n1_132 = hemi(n1, f132), n3_132 = hemi(n3, f132), n2_132 = hemi(n2, f132);
+        // For each face, ensure all its vertex normals point to the same
+        // hemisphere as that face. This is crucial to avoid "shadow
+        // terminator"-like dark bands on low-poly geometry.
+        vec3 n0_012 = hemi(n0, f012), n1_012 = hemi(n1, f012),
+             n2_012 = hemi(n2, f012);
+        vec3 n0_023 = hemi(n0, f023), n2_023 = hemi(n2, f023),
+             n3_023 = hemi(n3, f023);
+        vec3 n0_031 = hemi(n0, f031), n3_031 = hemi(n3, f031),
+             n1_031 = hemi(n1, f031);
+        vec3 n1_132 = hemi(n1, f132), n3_132 = hemi(n3, f132),
+             n2_132 = hemi(n2, f132);
 
         // Build triangles with per-vertex normals (interpolation ON)
-        world.add(make_shared<triangle>(p0, p1, p2, n0_012, n1_012, n2_012, red));
-        world.add(make_shared<triangle>(p0, p2, p3, n0_023, n2_023, n3_023, red));
-        world.add(make_shared<triangle>(p0, p3, p1, n0_031, n3_031, n1_031, red));
-        world.add(make_shared<triangle>(p1, p3, p2, n1_132, n3_132, n2_132, red));
+        world.add(
+            make_shared<triangle>(p0, p1, p2, n0_012, n1_012, n2_012, red));
+        world.add(
+            make_shared<triangle>(p0, p2, p3, n0_023, n2_023, n3_023, red));
+        world.add(
+            make_shared<triangle>(p0, p3, p1, n0_031, n3_031, n1_031, red));
+        world.add(
+            make_shared<triangle>(p1, p3, p2, n1_132, n3_132, n2_132, red));
     };
 
     // Left: smooth
     add_tetra(point3(-1.8, 0.8, 0.0), 1.15, true);
 
     // Right: flat
-    add_tetra(point3( 1.8, 0.8, 0.0), 1.15, false);
+    add_tetra(point3(1.8, 0.8, 0.0), 1.15, false);
 
     return make_shared<bvh_node>(world, 0, 1);
 }
@@ -2492,38 +2489,6 @@ SceneConfig select_scene(int scene_id) {
                                    vec3(0, 0, 6), color(12, 12, 12)));
         break;
 
-    case 35: // PBR Texture Demo - PBR 贴图演示
-        config.world = pbr_texture_demo();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 500; // 增加采样数以减少噪点
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 4, 8);
-        config.lookat = point3(0, 1, 0);
-        config.vfov = 40.0;
-
-        // 改用面光源 (QuadLight) 以获得软阴影和更好的 MIS 效果
-        // 位于上方，面积 4x4，强度 25
-        config.lights.push_back(
-            make_shared<QuadLight>(point3(-2, 10, -2), vec3(4, 0, 0),
-                                   vec3(0, 0, 4), color(25, 25, 25)));
-        break;
-
-    case 36: // PBR Floating Spheres - 悬浮球体 + HDR
-        config.world = pbr_floating_spheres_env();
-        config.aspect_ratio = 16.0 / 9.0;
-        config.image_width = 800;
-        config.samples_per_pixel = 500;
-        config.background = color(0.0, 0.0, 0.0);
-        config.lookfrom = point3(0, 0, 8);
-        config.lookat = point3(0, 0, 0);
-        config.vfov = 30.0;
-
-        // 使用 HDR 环境光
-        config.lights.push_back(
-            make_shared<EnvironmentLight>("brown_photostudio_02_4k.hdr"));
-        break;
-
     case 37: // PBR Spheres Grid with NEE/MIS
         config.world = pbr_spheres_grid_lights();
         config.aspect_ratio = 1.0;
@@ -2872,6 +2837,40 @@ SceneConfig select_scene(int scene_id) {
         config.aperture = 0.0;
         break;
     }
+
+    case 58:
+        config.world = mesh_demo_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.70, 0.80, 1.00);
+        config.lookfrom = point3(13, 2, 3);
+        config.lookat = point3(0, 0, 0);
+        config.vfov = 20.0;
+        break;
+
+    case 59:
+        config.world = mesh_monkey_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.70, 0.80, 1.00);
+        config.lookfrom = point3(13, 2, 3);
+        config.lookat = point3(0, 0, 0);
+        config.vfov = 20.0;
+        break;
+
+    case 60:
+        config.world = cornell_box_suzanne_fixed();
+        config.aspect_ratio = 1.0;
+        config.image_width = 600;
+        config.samples_per_pixel = 400;
+        config.background = color(0, 0, 0);
+        config.lookfrom = point3(278, 278, -800);
+        config.lookat = point3(278, 278, 0);
+        config.vfov = 40.0;
+        config.aperture = 0.0;
+        break;
     }
 
     return config;
