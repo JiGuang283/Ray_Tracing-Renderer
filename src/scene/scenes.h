@@ -71,4 +71,10 @@ shared_ptr<hittable> multi_light_demo();
 shared_ptr<hittable> cmy_shadows_demo();
 shared_ptr<hittable> infinity_mirror_demo();
 
+shared_ptr<hittable> pyramid_pointlight_compare_scene();
+shared_ptr<hittable> triangle_vertex_normal_validation_scene();
+shared_ptr<hittable> triangle_normal_interp_compare_scene();
+shared_ptr<hittable> triangle_hit_validation_scene();
+shared_ptr<hittable> triangle_occlusion_validation_scene();
+
 #endif

@@ -1521,6 +1521,575 @@ shared_ptr<hittable> infinity_mirror_demo() {
     return make_shared<bvh_node>(world, 0, 1);
 }
 
+shared_ptr<hittable> mesh_demo_scene() {
+    hittable_list world;
+
+    // Ground
+    auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // Bunny material
+    auto bunny_mat = make_shared<lambertian>(color(0.8, 0.3, 0.3));
+
+    // Bunny transform (scale up a lot; bunny is tiny in original units)
+    // 用 uniform scale，避免法线/光照因为非均匀缩放变怪
+    const vec3 bunny_scale(20.0, 20.0, 20.0);
+
+    // 放在地面上：y 方向稍微抬一点点，避免穿地（不同 bunny 文件底部可能略不同）
+    const vec3 bunny_pos(0.0, -0.3, 0.0);
+
+    // Load bunny (build BVH inside mesh; try to use vertex normals if present)
+    auto bunny = mesh::load_from_obj("assets/stanford bunny.obj", bunny_mat,
+                                     bunny_pos, bunny_scale,
+                                     true,  // build_bvh
+                                     true); // use_vertex_normals
+    if (bunny) {
+        world.add(bunny);
+    }
+
+    // World BVH
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> mesh_monkey_scene() {
+    hittable_list world;
+
+    // Ground
+    auto ground_mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // Bunny material
+    auto bunny_mat = make_shared<lambertian>(color(0.8, 0.3, 0.3));
+
+    // Bunny transform (scale up a lot; bunny is tiny in original units)
+    // 用 uniform scale，避免法线/光照因为非均匀缩放变怪
+    const vec3 bunny_scale(1.0, 1.0, 1.0);
+
+    // 放在地面上：y 方向稍微抬一点点，避免穿地（不同 bunny 文件底部可能略不同）
+    const vec3 bunny_pos(0.0, 1.5, 0.0);
+
+    // Load bunny (build BVH inside mesh; try to use vertex normals if present)
+    auto bunny = mesh::load_from_obj("assets/Suzanne.obj", bunny_mat, bunny_pos,
+                                     bunny_scale,
+                                     true,  // build_bvh
+                                     true); // use_vertex_normals
+    if (bunny) {
+        world.add(bunny);
+    }
+
+    // World BVH
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> cornell_box_suzanne_fixed() {
+    hittable_list objects;
+
+    auto red = make_shared<lambertian>(color(.65, .05, .05));
+    auto white = make_shared<lambertian>(color(.73, .73, .73));
+    auto green = make_shared<lambertian>(color(.12, .45, .15));
+
+    // --- Cornell box walls ---
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 555, green));
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 0, red));
+
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 0, white));   // floor
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 555, white)); // ceiling
+    objects.add(make_shared<xy_rect>(0, 555, 0, 555, 555, white)); // back
+
+    // ✅ 灯：保持你现在“正确的矩形灯 + flip_face”的做法，亮度用更温和的 18
+    auto light = make_shared<diffuse_light>(color(3, 3, 3));
+    auto rect_light = make_shared<xz_rect>(113, 443, 127, 432, 554, light);
+    objects.add(make_shared<flip_face>(rect_light)); // 灯面朝下，对盒内发光
+
+    // ----------------------------
+    // Suzanne（猴头）：更鲜艳的颜色
+    // ----------------------------
+    // 亮蓝色（你想要黄色也行，比如 color(0.95,0.9,0.15)）
+    auto monkey_mat = make_shared<lambertian>(color(0.20, 0.55, 0.95));
+    const vec3 monkey_scale(90, 90, 90);
+
+    auto monkey_raw = mesh::load_from_obj("assets/Suzanne.obj", monkey_mat,
+                                          vec3(0, 0, 0), // 不 baked translation
+                                          monkey_scale, true, true);
+
+    if (monkey_raw) {
+        aabb bb;
+        if (monkey_raw->bounding_box(0, 1, bb)) {
+            double lift = -bb.min().y(); // 抬到地面
+
+            // 猴子转过来：绕 Y 轴转 180 度
+            auto monkey_rot = make_shared<rotate_y>(monkey_raw, 180);
+
+            // 稍微偏右一点，给兔子让位置
+            vec3 monkey_pos(390, lift, 360);
+            objects.add(make_shared<translate>(monkey_rot, monkey_pos));
+        } else {
+            auto monkey_rot = make_shared<rotate_y>(monkey_raw, 180);
+            objects.add(make_shared<translate>(monkey_rot, vec3(160, 80, 220)));
+        }
+    } else {
+        std::cerr << "failed to load Suzanne.obj\n";
+    }
+
+    // ----------------------------
+    // Stanford Bunny：同样 bbox 自动落地 + 放到左侧
+    // ----------------------------
+    auto bunny_mat = make_shared<lambertian>(color(0.95, 0.90, 0.15)); // 亮黄色
+    // Bunny 原始尺度很小，Cornell 里需要放大很多
+    const vec3 bunny_scale(800, 800, 800);
+
+    auto bunny_raw =
+        mesh::load_from_obj("assets/stanford bunny.obj", bunny_mat,
+                            vec3(0, 0, 0), // 不 baked translation
+                            bunny_scale, true,
+                            true // bunny 通常没 vn，会自动退回 flat，不会出错
+        );
+
+    if (bunny_raw) {
+        aabb bb;
+        if (bunny_raw->bounding_box(0, 1, bb)) {
+            double lift = -bb.min().y(); // 抬到地面
+
+            // 兔子没有明确“正面”，但统一转一下也无妨（你也可以改成 0）
+            auto bunny_rot = make_shared<rotate_y>(bunny_raw, 180);
+
+            // 放左侧、稍微更靠后一点，避免与猴子重叠
+            vec3 bunny_pos(210, lift, 330);
+            objects.add(make_shared<translate>(bunny_rot, bunny_pos));
+        } else {
+            auto bunny_rot = make_shared<rotate_y>(bunny_raw, 180);
+            objects.add(make_shared<translate>(bunny_rot, vec3(210, 80, 330)));
+        }
+    } else {
+        std::cerr << "failed to load stanford bunny.obj\n";
+    }
+
+    return make_shared<bvh_node>(objects, 0, 1);
+}
+
+struct ModelFeatureSettings {
+    bool build_bvh = true;
+    bool apply_transform = true;
+    bool use_vertex_normals = true;
+    bool disable_mesh = false;
+    bool duplicate_mesh = true;
+};
+
+shared_ptr<hittable>
+model_feature_validation_scene(const ModelFeatureSettings &settings) {
+    hittable_list world;
+
+    auto ground_mat = make_shared<lambertian>(color(0.6, 0.6, 0.6));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    auto area_light = make_shared<diffuse_light>(color(6, 6, 6));
+    world.add(make_shared<xz_rect>(-6, 6, -6, 6, 6, area_light));
+
+    auto matte = make_shared<lambertian>(color(0.75, 0.45, 0.35));
+
+    if (!settings.disable_mesh) {
+        vec3 translation = settings.apply_transform ? vec3(-2.5, 0.0, 0.0)
+                                                    : vec3(0.0, 0.0, 0.0);
+        vec3 scale = settings.apply_transform ? vec3(1.5, 1.5, 1.5)
+                                              : vec3(1.0, 1.0, 1.0);
+
+        auto main_mesh = mesh::load_from_obj(
+            "assets/sample_mesh.obj", matte, translation, scale,
+            settings.build_bvh, settings.use_vertex_normals);
+
+        if (main_mesh) {
+            world.add(main_mesh);
+
+            if (settings.duplicate_mesh) {
+                world.add(
+                    make_shared<translate>(main_mesh, vec3(3.5, 0.0, 0.0)));
+            }
+        }
+    } else {
+        world.add(make_shared<sphere>(point3(-2.0, 1.0, 0.0), 1.0, matte));
+        world.add(make_shared<sphere>(point3(1.5, 1.0, 0.0), 1.0, matte));
+    }
+
+    auto mirror = make_shared<metal>(color(0.8, 0.85, 0.9), 0.05);
+    world.add(make_shared<sphere>(point3(-4.0, 1.25, -2.0), 1.0, mirror));
+
+    if (settings.build_bvh) {
+        return make_shared<bvh_node>(world, 0, 1);
+    }
+
+    return make_shared<hittable_list>(world);
+}
+
+// === NEW: Mesh BVH stress scene (with smooth normal interpolation) ===
+// build_world_bvh: 是否对整个 world 建 BVH（物体级加速）
+// build_mesh_bvh:  是否对“单个锥体的三角集合”建 BVH（三角形级加速）
+// grid_n:          网格边长（总实例数约 grid_n^2）
+shared_ptr<hittable> mesh_bvh_stress_scene(bool build_world_bvh,
+                                           bool build_mesh_bvh, int grid_n) {
+    hittable_list world;
+
+    // Ground
+    auto ground_mat = make_shared<lambertian>(color(0.55, 0.55, 0.55));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // Large area light above (simple + stable)
+    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
+    world.add(make_shared<xz_rect>(-40, 40, -40, 40, 30, light_mat));
+
+    // ---- Build ONE base pyramid (6 triangles) with per-vertex normal
+    // interpolation ----
+    auto mesh_mat = make_shared<lambertian>(color(0.75, 0.45, 0.35));
+
+    auto unit_faceN = [](const point3 &a, const point3 &b, const point3 &c) {
+        return unit_vector(cross(b - a, c - a));
+    };
+
+    // build a square-base pyramid centered at origin (like your sample obj)
+    // apex: (0,1,0)
+    // base: (-1,0,-1), (1,0,-1), (1,0,1), (-1,0,1)
+    auto build_smooth_pyramid =
+        [&](const vec3 &base_translation, const vec3 &base_scale,
+            bool local_build_bvh,
+            shared_ptr<material> mat) -> shared_ptr<hittable> {
+        // apply transform (scale then translate)
+        auto T = [&](const point3 &p) {
+            return point3(p.x() * base_scale.x() + base_translation.x(),
+                          p.y() * base_scale.y() + base_translation.y(),
+                          p.z() * base_scale.z() + base_translation.z());
+        };
+
+        // vertices
+        point3 v0 = T(point3(0, 1, 0)); // apex
+        point3 v1 = T(point3(-1, 0, -1));
+        point3 v2 = T(point3(1, 0, -1));
+        point3 v3 = T(point3(1, 0, 1));
+        point3 v4 = T(point3(-1, 0, 1));
+
+        // faces (6 triangles)
+        // sides:
+        // (v0,v2,v1), (v0,v3,v2), (v0,v4,v3), (v0,v1,v4)
+        // base (two tris): (v1,v2,v3), (v1,v3,v4)
+        vec3 f021 = unit_faceN(v0, v2, v1);
+        vec3 f032 = unit_faceN(v0, v3, v2);
+        vec3 f043 = unit_faceN(v0, v4, v3);
+        vec3 f014 = unit_faceN(v0, v1, v4);
+        vec3 f123 = unit_faceN(v1, v2, v3);
+        vec3 f134 = unit_faceN(v1, v3, v4);
+
+        // vertex normals = average of adjacent face normals
+        // adjacency:
+        // v0: all 4 side faces
+        // v1: f021, f014, f123, f134
+        // v2: f021, f032, f123
+        // v3: f032, f043, f123, f134
+        // v4: f043, f014, f134
+        vec3 n0 = unit_vector(f021 + f032 + f043 + f014);
+        vec3 n1 = unit_vector(f021 + f014 + f123 + f134);
+        vec3 n2 = unit_vector(f021 + f032 + f123);
+        vec3 n3 = unit_vector(f032 + f043 + f123 + f134);
+        vec3 n4 = unit_vector(f043 + f014 + f134);
+
+        // force vertex normals to the same hemisphere as the face normal (avoid
+        // dark bands)
+        auto hemi = [](const vec3 &n, const vec3 &face_n) {
+            return (dot(n, face_n) < 0) ? (-n) : n;
+        };
+
+        // build local triangles
+        hittable_list local;
+
+        // side 1: (v0,v2,v1)
+        local.add(make_shared<triangle>(v0, v2, v1, hemi(n0, f021),
+                                        hemi(n2, f021), hemi(n1, f021), mat));
+
+        // side 2: (v0,v3,v2)
+        local.add(make_shared<triangle>(v0, v3, v2, hemi(n0, f032),
+                                        hemi(n3, f032), hemi(n2, f032), mat));
+
+        // side 3: (v0,v4,v3)
+        local.add(make_shared<triangle>(v0, v4, v3, hemi(n0, f043),
+                                        hemi(n4, f043), hemi(n3, f043), mat));
+
+        // side 4: (v0,v1,v4)
+        local.add(make_shared<triangle>(v0, v1, v4, hemi(n0, f014),
+                                        hemi(n1, f014), hemi(n4, f014), mat));
+
+        // base tri 1: (v1,v2,v3)
+        local.add(make_shared<triangle>(v1, v2, v3, hemi(n1, f123),
+                                        hemi(n2, f123), hemi(n3, f123), mat));
+
+        // base tri 2: (v1,v3,v4)
+        local.add(make_shared<triangle>(v1, v3, v4, hemi(n1, f134),
+                                        hemi(n3, f134), hemi(n4, f134), mat));
+
+        if (local_build_bvh) {
+            return make_shared<bvh_node>(local, 0.0, 1.0);
+        }
+        return make_shared<hittable_list>(local);
+    };
+
+    // Base pyramid: built at origin; instanced via translate (transform)
+    auto base_pyramid =
+        build_smooth_pyramid(vec3(0.0, 0.0, 0.0), // translation
+                             vec3(1.0, 1.0, 1.0), // scale
+                             build_mesh_bvh, // local BVH (triangle-level accel)
+                             mesh_mat);
+
+    // If something went wrong, fall back (shouldn't)
+    if (!base_pyramid) {
+        auto fallback = make_shared<lambertian>(color(0.4, 0.6, 0.8));
+        base_pyramid = make_shared<sphere>(point3(0, 0.5, 0), 0.5, fallback);
+    }
+
+    // grid instances
+    const double spacing = 2.2;
+    const double start = -0.5 * (grid_n - 1) * spacing;
+
+    for (int i = 0; i < grid_n; ++i) {
+        for (int j = 0; j < grid_n; ++j) {
+            double x = start + i * spacing;
+            double z = start + j * spacing;
+            // Slightly lift it so it doesn't z-fight with ground
+            world.add(make_shared<translate>(base_pyramid, vec3(x, 0.01, z)));
+        }
+    }
+
+    // One glossy reference sphere (helps visually locate)
+    auto mirror = make_shared<metal>(color(0.85, 0.9, 0.95), 0.02);
+    world.add(make_shared<sphere>(point3(start - 3.0, 1.0, start - 3.0), 1.0,
+                                  mirror));
+
+    if (build_world_bvh) {
+        return make_shared<bvh_node>(world, 0.0, 1.0);
+    }
+    return make_shared<hittable_list>(world);
+}
+
+shared_ptr<hittable> triangle_normal_interp_compare_scene() {
+    hittable_list world;
+
+    // Ground (darker, to avoid washing out contrast)
+    auto ground_mat = make_shared<lambertian>(color(0.35, 0.35, 0.35));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // A small, bright side area light -> strong directionality -> gradient becomes obvious
+    // Put it in front-right and slightly above the triangles, so it contributes clear shading.
+    auto side_light = make_shared<diffuse_light>(color(35, 35, 35));
+    // xy_rect(x0,x1, y0,y1, k=z)
+    // This rectangle lies on z = +2.5 plane, facing -Z (by your rect convention).
+    world.add(make_shared<xy_rect>(
+        1.5,  5.0,   // x range (right side)
+        1.2,  4.8,   // y range (above)
+        +2.5,
+        side_light
+    ));
+
+    auto tri_mat = make_shared<lambertian>(color(0.85, 0.25, 0.25));
+
+    // Base triangle (in front of camera, roughly vertical)
+    point3 a0(-1.8, 0.8, 0.0);
+    point3 a1( 0.2, 0.8, 0.0);
+    point3 a2(-0.8, 2.8, 0.0);
+
+    // Deliberately different vertex normals (still mostly "up", but tilted differently)
+    vec3 n0 = unit_vector(vec3(-0.8, 1.0,  0.2));
+    vec3 n1 = unit_vector(vec3( 0.8, 1.0, -0.2));
+    vec3 n2 = unit_vector(vec3( 0.0, 1.0,  1.0));
+
+    // Left: smooth shading (vertex-normal interpolation ON)
+    world.add(make_shared<triangle>(
+        a0, a1, a2,
+        n0, n1, n2,
+        tri_mat,
+        vec2(0, 0), vec2(0, 0), vec2(0, 0),
+        false
+    ));
+
+    // Right: same geometry shifted right, but FLAT shading (vertex-normal interpolation OFF)
+    vec3 shift(2.6, 0.0, 0.0);
+    world.add(make_shared<triangle>(
+        a0 + shift, a1 + shift, a2 + shift,
+        tri_mat
+    ));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+
+shared_ptr<hittable> triangle_vertex_normal_validation_scene() {
+    hittable_list world;
+
+    // Ground
+    auto ground_mat = make_shared<lambertian>(color(0.6, 0.6, 0.6));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // A big soft area light above (keeps scene stable)
+    auto top_light = make_shared<diffuse_light>(color(6, 6, 6));
+    world.add(make_shared<xz_rect>(-8, 8, -8, 8, 6, top_light));
+
+    // A SIDE light that is large enough and (very likely) visible to the camera,
+    // making the vertex-normal gradient much easier to observe.
+    // xy_rect(x0,x1, y0,y1, k=z, material)
+    auto side_light = make_shared<diffuse_light>(color(25, 25, 25));
+    world.add(make_shared<xy_rect>(
+    2.2,  5.0,    // x 往右移出视野
+    2.0,  4.5,    // y 往上移
+    +2.0,
+    side_light
+));
+
+
+
+
+    // Triangle with explicit vertex normals (each vertex normal points differently)
+    auto tri_mat = make_shared<lambertian>(color(0.85, 0.25, 0.25));
+
+    point3 v0(-1.5, 0.8, 0.0);
+    point3 v1( 1.5, 0.8, 0.0);
+    point3 v2( 0.0, 2.8, 0.0);
+
+    // Deliberately different normals to create a visible gradient across the triangle.
+    // (We keep them roughly "upwards" so the surface still faces the camera reasonably.)
+    vec3 n0 = unit_vector(vec3(-0.3, 1.0,  0.2));
+    vec3 n1 = unit_vector(vec3( 0.9, 1.0, -0.1));
+    vec3 n2 = unit_vector(vec3( 0.0, 1.0,  1.0));
+
+    // Use the constructor that enables vertex-normal interpolation.
+    world.add(make_shared<triangle>(v0, v1, v2,
+                                   n0, n1, n2,
+                                   tri_mat,
+                                   vec2(0, 0), vec2(0, 0), vec2(0, 0),
+                                   false));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+
+
+shared_ptr<hittable> triangle_hit_validation_scene() {
+    hittable_list world;
+
+    // Ground (optional, helps perception)
+    auto ground_mat = make_shared<lambertian>(color(0.6, 0.6, 0.6));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // Area light above
+    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
+    world.add(make_shared<xz_rect>(-8, 8, -8, 8, 6, light_mat));
+
+    // One single triangle in front of the camera
+    auto tri_mat = make_shared<lambertian>(color(0.85, 0.25, 0.25)); // reddish
+    point3 v0(-1.5, 0.8, 0.0);
+    point3 v1( 1.5, 0.8, 0.0);
+    point3 v2( 0.0, 2.8, 0.0);
+
+    world.add(make_shared<triangle>(v0, v1, v2, tri_mat));
+
+    // Wrap with BVH for consistency (not required, but fine)
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> triangle_occlusion_validation_scene() {
+    hittable_list world;
+
+    auto ground_mat = make_shared<lambertian>(color(0.6, 0.6, 0.6));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    auto light_mat = make_shared<diffuse_light>(color(10, 10, 10));
+    world.add(make_shared<xz_rect>(-8, 8, -8, 8, 6, light_mat));
+
+    // Triangle (placed slightly farther)
+    auto tri_mat = make_shared<lambertian>(color(0.25, 0.35, 0.85)); // bluish
+    point3 v0(-1.8, 0.7, -1.0);
+    point3 v1( 1.8, 0.7, -1.0);
+    point3 v2( 0.0, 3.0, -1.0);
+    world.add(make_shared<triangle>(v0, v1, v2, tri_mat));
+
+    // Occluder sphere (closer to camera, should block part of triangle)
+    auto occ_mat = make_shared<lambertian>(color(0.85, 0.65, 0.20)); // yellowish
+    world.add(make_shared<sphere>(point3(-0.3, 1.6, -0.3), 0.9, occ_mat));
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
+shared_ptr<hittable> pyramid_pointlight_compare_scene() {
+    hittable_list world;
+
+    // Ground
+    auto ground_mat = make_shared<lambertian>(color(0.35, 0.35, 0.35));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_mat));
+
+    // "Point light": small emissive sphere (stable & simple)
+    // Put it front-right-above to create strong directional shading.
+    auto light_mat = make_shared<diffuse_light>(color(60, 60, 60));
+    world.add(make_shared<sphere>(point3(3.0, 5.0, 3.5), 0.22, light_mat));
+
+    auto red = make_shared<lambertian>(color(0.85, 0.25, 0.25));
+
+    auto unit_faceN = [](const point3& a, const point3& b, const point3& c) {
+        return unit_vector(cross(b - a, c - a));
+    };
+
+    // Add a tetrahedron (triangular pyramid) centered near c.
+    // smooth=true  -> per-vertex normals (averaged from adjacent face normals)
+    // smooth=false -> flat (face normal)
+    auto add_tetra = [&](const point3& c, double s, bool smooth) {
+        // Geometry: apex + 3 base vertices (tetra-like)
+        point3 p0 = c + point3( 0.0,  1.25 * s,  0.0);     // apex
+        point3 p1 = c + point3(-1.00 * s, 0.00, -0.85 * s);
+        point3 p2 = c + point3( 1.00 * s, 0.00, -0.85 * s);
+        point3 p3 = c + point3( 0.00 * s, 0.00,  1.15 * s);
+
+        if (!smooth) {
+            // Flat shading
+            world.add(make_shared<triangle>(p0, p1, p2, red));
+            world.add(make_shared<triangle>(p0, p2, p3, red));
+            world.add(make_shared<triangle>(p0, p3, p1, red));
+            world.add(make_shared<triangle>(p1, p3, p2, red)); // base
+            return;
+        }
+
+        // --- Face normals for the 4 faces ---
+        vec3 f012 = unit_faceN(p0, p1, p2);
+        vec3 f023 = unit_faceN(p0, p2, p3);
+        vec3 f031 = unit_faceN(p0, p3, p1);
+        vec3 f132 = unit_faceN(p1, p3, p2); // base
+
+        // --- Vertex normals = average of adjacent face normals ---
+        // (This produces much more stable smooth shading than "radial normals")
+        vec3 n0 = unit_vector(f012 + f023 + f031);
+        vec3 n1 = unit_vector(f012 + f031 + f132);
+        vec3 n2 = unit_vector(f012 + f023 + f132);
+        vec3 n3 = unit_vector(f023 + f031 + f132);
+
+        // Helper: force a vertex normal to be in the same hemisphere as the face normal
+        auto hemi = [](const vec3& n, const vec3& face_n) {
+            return (dot(n, face_n) < 0) ? (-n) : n;
+        };
+
+        // For each face, ensure all its vertex normals point to the same hemisphere as that face.
+        // This is crucial to avoid "shadow terminator"-like dark bands on low-poly geometry.
+        vec3 n0_012 = hemi(n0, f012), n1_012 = hemi(n1, f012), n2_012 = hemi(n2, f012);
+        vec3 n0_023 = hemi(n0, f023), n2_023 = hemi(n2, f023), n3_023 = hemi(n3, f023);
+        vec3 n0_031 = hemi(n0, f031), n3_031 = hemi(n3, f031), n1_031 = hemi(n1, f031);
+        vec3 n1_132 = hemi(n1, f132), n3_132 = hemi(n3, f132), n2_132 = hemi(n2, f132);
+
+        // Build triangles with per-vertex normals (interpolation ON)
+        world.add(make_shared<triangle>(p0, p1, p2, n0_012, n1_012, n2_012, red));
+        world.add(make_shared<triangle>(p0, p2, p3, n0_023, n2_023, n3_023, red));
+        world.add(make_shared<triangle>(p0, p3, p1, n0_031, n3_031, n1_031, red));
+        world.add(make_shared<triangle>(p1, p3, p2, n1_132, n3_132, n2_132, red));
+    };
+
+    // Left: smooth
+    add_tetra(point3(-1.8, 0.8, 0.0), 1.15, true);
+
+    // Right: flat
+    add_tetra(point3( 1.8, 0.8, 0.0), 1.15, false);
+
+    return make_shared<bvh_node>(world, 0, 1);
+}
+
 SceneConfig select_scene(int scene_id) {
     SceneConfig config;
 
@@ -2083,7 +2652,7 @@ SceneConfig select_scene(int scene_id) {
         // No external lights, lit by emissive spheres
         break;
 
-    case 17:
+    case 43:
         config.world = cornell_box_suzanne_fixed();
         config.aspect_ratio = 1.0;
         config.image_width = 600;
@@ -2093,14 +2662,12 @@ SceneConfig select_scene(int scene_id) {
 
         config.background = color(0, 0, 0);
         config.lookfrom = point3(278, 278, -800);
-        config.lookat   = point3(278, 278, 0);
+        config.lookat = point3(278, 278, 0);
         config.vfov = 40.0;
         config.aperture = 0.0;
         break;
 
-
-
-    case 18: {
+    case 44: {
         ModelFeatureSettings settings{}; // All features enabled
         config.world = model_feature_validation_scene(settings);
         config.aspect_ratio = 16.0 / 9.0;
@@ -2113,7 +2680,7 @@ SceneConfig select_scene(int scene_id) {
         break;
     }
 
-    case 19: {
+    case 45: {
         ModelFeatureSettings settings{};
         settings.build_bvh = false; // Disable BVH to compare traversal paths
         config.world = model_feature_validation_scene(settings);
@@ -2127,7 +2694,7 @@ SceneConfig select_scene(int scene_id) {
         break;
     }
 
-    case 20: {
+    case 46: {
         ModelFeatureSettings settings{};
         settings.apply_transform = false; // Render without translate/scale
         config.world = model_feature_validation_scene(settings);
@@ -2141,7 +2708,7 @@ SceneConfig select_scene(int scene_id) {
         break;
     }
 
-    case 21: {
+    case 47: {
         ModelFeatureSettings settings{};
         settings.use_vertex_normals = false; // Flat shading for comparison
         config.world = model_feature_validation_scene(settings);
@@ -2155,9 +2722,9 @@ SceneConfig select_scene(int scene_id) {
         break;
     }
 
-    case 22: {
+    case 48: {
         ModelFeatureSettings settings{};
-        settings.disable_mesh = true;   // Replace mesh to validate loader path
+        settings.disable_mesh = true; // Replace mesh to validate loader path
         settings.duplicate_mesh = false;
         config.world = model_feature_validation_scene(settings);
         config.aspect_ratio = 16.0 / 9.0;
@@ -2171,7 +2738,7 @@ SceneConfig select_scene(int scene_id) {
     }
 
     // ===== NEW stress-test cases =====
-    case 23: { // World BVH ON, Mesh BVH ON
+    case 49: { // World BVH ON, Mesh BVH ON
         config.world = mesh_bvh_stress_scene(true, true, 15);
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
@@ -2183,11 +2750,11 @@ SceneConfig select_scene(int scene_id) {
         break;
     }
 
-    case 24: { // World BVH OFF, Mesh BVH ON
+    case 50: { // World BVH OFF, Mesh BVH ON
         config.world = mesh_bvh_stress_scene(false, true, 15);
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
-        config.samples_per_pixel = 2000;
+        config.samples_per_pixel = 200;
         config.background = color(0.65, 0.75, 0.9);
         config.lookfrom = point3(30, 18, 30);
         config.lookat = point3(0, 0.8, 0);
@@ -2195,7 +2762,7 @@ SceneConfig select_scene(int scene_id) {
         break;
     }
 
-    case 25: { // World BVH ON, Mesh BVH OFF
+    case 51: { // World BVH ON, Mesh BVH OFF
         config.world = mesh_bvh_stress_scene(true, false, 15);
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
@@ -2207,7 +2774,7 @@ SceneConfig select_scene(int scene_id) {
         break;
     }
 
-    case 26: { // World BVH OFF, Mesh BVH OFF (worst-case)
+    case 52: { // World BVH OFF, Mesh BVH OFF (worst-case)
         config.world = mesh_bvh_stress_scene(false, false, 15);
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
@@ -2228,7 +2795,7 @@ SceneConfig select_scene(int scene_id) {
         config.vfov = 20.0;
         break;
 
-    case 27: {
+    case 53: {
         config.world = triangle_hit_validation_scene();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
@@ -2237,13 +2804,13 @@ SceneConfig select_scene(int scene_id) {
 
         // Camera: look at triangle
         config.lookfrom = point3(0.0, 2.0, 6.5);
-        config.lookat   = point3(0.0, 1.8, 0.0);
+        config.lookat = point3(0.0, 1.8, 0.0);
         config.vfov = 30.0;
         config.aperture = 0.0;
         break;
     }
 
-    case 28: {
+    case 54: {
         config.world = triangle_occlusion_validation_scene();
         config.aspect_ratio = 16.0 / 9.0;
         config.image_width = 800;
@@ -2251,64 +2818,61 @@ SceneConfig select_scene(int scene_id) {
         config.background = color(0.65, 0.75, 0.9);
 
         config.lookfrom = point3(0.0, 2.0, 6.5);
-        config.lookat   = point3(0.0, 1.8, -0.8);
+        config.lookat = point3(0.0, 1.8, -0.8);
         config.vfov = 30.0;
         config.aperture = 0.0;
         break;
     }
 
-    case 29: {
-    config.world = triangle_vertex_normal_validation_scene();
-    config.aspect_ratio = 16.0 / 9.0;
-    config.image_width = 800;
-    config.samples_per_pixel = 1000; // 稍微高一点，梯度更干净
-    config.background = color(0.65, 0.75, 0.9);
+    case 55: {
+        config.world = triangle_vertex_normal_validation_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 1000; // 稍微高一点，梯度更干净
+        config.background = color(0.65, 0.75, 0.9);
 
-    point3 tri_center(0.0, 1.47, 0.0);
+        point3 tri_center(0.0, 1.47, 0.0);
 
-    // if light emits toward -Z, reverse direction is +Z,
-    // so camera should sit at Z negative and look toward +Z
-    config.lookfrom = tri_center + vec3(-1.0, 0.0, -1.0) * 4.5;  // (0, 1.47, -6.5)
-    config.lookat   = tri_center;
+        // if light emits toward -Z, reverse direction is +Z,
+        // so camera should sit at Z negative and look toward +Z
+        config.lookfrom =
+            tri_center + vec3(-1.0, 0.0, -1.0) * 4.5; // (0, 1.47, -6.5)
+        config.lookat = tri_center;
 
-    config.aperture = 0.0;
-    break;
+        config.aperture = 0.0;
+        break;
     }
 
-    case 30: {
-    config.world = triangle_normal_interp_compare_scene();
-    config.aspect_ratio = 16.0 / 9.0;
-    config.image_width = 800;
-    config.samples_per_pixel = 10000;
-    config.background = color(0.65, 0.75, 0.9);
+    case 56: {
+        config.world = triangle_normal_interp_compare_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 10000;
+        config.background = color(0.65, 0.75, 0.9);
 
-    // Camera: straightforward front view, so differences are easy to see
-    config.lookfrom = point3(0.6, 1.75, 4.875);
-    config.lookat   = point3(0.6, 1.7, 0.0);
-    config.vfov = 30.0;
-    config.aperture = 0.0;
-    break;
+        // Camera: straightforward front view, so differences are easy to see
+        config.lookfrom = point3(0.6, 1.75, 4.875);
+        config.lookat = point3(0.6, 1.7, 0.0);
+        config.vfov = 30.0;
+        config.aperture = 0.0;
+        break;
     }
 
-    case 31: {
-    config.world = pyramid_pointlight_compare_scene();
-    config.aspect_ratio = 16.0 / 9.0;
-    config.image_width = 900;
-    config.samples_per_pixel = 1500;   // 点光源 + 路径追踪会更噪，建议高一点
-    config.background = color(0.65, 0.75, 0.9);
+    case 57: {
+        config.world = pyramid_pointlight_compare_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 900;
+        config.samples_per_pixel = 1500; // 点光源 + 路径追踪会更噪，建议高一点
+        config.background = color(0.65, 0.75, 0.9);
 
-    // Camera: slightly above, looking at center between two pyramids
-    config.lookfrom = point3(0.0, 4.4, 14.0);
-    config.lookat   = point3(0.0, 1.4, 0.0);
-    config.vfov = 28.0;
-    config.aperture = 0.0;
-    break;
+        // Camera: slightly above, looking at center between two pyramids
+        config.lookfrom = point3(0.0, 4.4, 14.0);
+        config.lookat = point3(0.0, 1.4, 0.0);
+        config.vfov = 28.0;
+        config.aperture = 0.0;
+        break;
     }
-
-
-
-    } 
+    }
 
     return config;
 }
-
