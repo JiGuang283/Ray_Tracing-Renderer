@@ -7,6 +7,7 @@
 #include "environmental_light.h"
 #include "hittable_list.h"
 #include "material.h"
+#include "mesh.h"
 #include "moving_sphere.h"
 #include "quad_light.h"
 #include "sphere.h"
@@ -2082,6 +2083,142 @@ SceneConfig select_scene(int scene_id) {
         // No external lights, lit by emissive spheres
         break;
 
+    case 17:
+        config.world = cornell_box_suzanne_fixed();
+        config.aspect_ratio = 1.0;
+        config.image_width = 600;
+
+        // Cornell 没 NEE 还是容易噪，先用高一点更稳
+        config.samples_per_pixel = 10000;
+
+        config.background = color(0, 0, 0);
+        config.lookfrom = point3(278, 278, -800);
+        config.lookat   = point3(278, 278, 0);
+        config.vfov = 40.0;
+        config.aperture = 0.0;
+        break;
+
+
+
+    case 18: {
+        ModelFeatureSettings settings{}; // All features enabled
+        config.world = model_feature_validation_scene(settings);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 10000;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(8, 4, 12);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 25.0;
+        break;
+    }
+
+    case 19: {
+        ModelFeatureSettings settings{};
+        settings.build_bvh = false; // Disable BVH to compare traversal paths
+        config.world = model_feature_validation_scene(settings);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(8, 4, 12);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 25.0;
+        break;
+    }
+
+    case 20: {
+        ModelFeatureSettings settings{};
+        settings.apply_transform = false; // Render without translate/scale
+        config.world = model_feature_validation_scene(settings);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(8, 4, 12);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 25.0;
+        break;
+    }
+
+    case 21: {
+        ModelFeatureSettings settings{};
+        settings.use_vertex_normals = false; // Flat shading for comparison
+        config.world = model_feature_validation_scene(settings);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(8, 4, 12);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 25.0;
+        break;
+    }
+
+    case 22: {
+        ModelFeatureSettings settings{};
+        settings.disable_mesh = true;   // Replace mesh to validate loader path
+        settings.duplicate_mesh = false;
+        config.world = model_feature_validation_scene(settings);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(8, 4, 12);
+        config.lookat = point3(0, 1.5, 0);
+        config.vfov = 25.0;
+        break;
+    }
+
+    // ===== NEW stress-test cases =====
+    case 23: { // World BVH ON, Mesh BVH ON
+        config.world = mesh_bvh_stress_scene(true, true, 15);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 2000;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(30, 18, 30);
+        config.lookat = point3(0, 0.8, 0);
+        config.vfov = 35.0;
+        break;
+    }
+
+    case 24: { // World BVH OFF, Mesh BVH ON
+        config.world = mesh_bvh_stress_scene(false, true, 15);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 2000;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(30, 18, 30);
+        config.lookat = point3(0, 0.8, 0);
+        config.vfov = 35.0;
+        break;
+    }
+
+    case 25: { // World BVH ON, Mesh BVH OFF
+        config.world = mesh_bvh_stress_scene(true, false, 15);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 2000;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(30, 18, 30);
+        config.lookat = point3(0, 0.8, 0);
+        config.vfov = 35.0;
+        break;
+    }
+
+    case 26: { // World BVH OFF, Mesh BVH OFF (worst-case)
+        config.world = mesh_bvh_stress_scene(false, false, 15);
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 2000;
+        config.background = color(0.65, 0.75, 0.9);
+        config.lookfrom = point3(30, 18, 30);
+        config.lookat = point3(0, 0.8, 0);
+        config.vfov = 35.0;
+        break;
+    }
+
     case 10:
     default:
         config.world = two_perlin_spheres();
@@ -2090,7 +2227,88 @@ SceneConfig select_scene(int scene_id) {
         config.lookat = point3(0, 0, 0);
         config.vfov = 20.0;
         break;
+
+    case 27: {
+        config.world = triangle_hit_validation_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+
+        // Camera: look at triangle
+        config.lookfrom = point3(0.0, 2.0, 6.5);
+        config.lookat   = point3(0.0, 1.8, 0.0);
+        config.vfov = 30.0;
+        config.aperture = 0.0;
+        break;
     }
+
+    case 28: {
+        config.world = triangle_occlusion_validation_scene();
+        config.aspect_ratio = 16.0 / 9.0;
+        config.image_width = 800;
+        config.samples_per_pixel = 200;
+        config.background = color(0.65, 0.75, 0.9);
+
+        config.lookfrom = point3(0.0, 2.0, 6.5);
+        config.lookat   = point3(0.0, 1.8, -0.8);
+        config.vfov = 30.0;
+        config.aperture = 0.0;
+        break;
+    }
+
+    case 29: {
+    config.world = triangle_vertex_normal_validation_scene();
+    config.aspect_ratio = 16.0 / 9.0;
+    config.image_width = 800;
+    config.samples_per_pixel = 1000; // 稍微高一点，梯度更干净
+    config.background = color(0.65, 0.75, 0.9);
+
+    point3 tri_center(0.0, 1.47, 0.0);
+
+    // if light emits toward -Z, reverse direction is +Z,
+    // so camera should sit at Z negative and look toward +Z
+    config.lookfrom = tri_center + vec3(-1.0, 0.0, -1.0) * 4.5;  // (0, 1.47, -6.5)
+    config.lookat   = tri_center;
+
+    config.aperture = 0.0;
+    break;
+    }
+
+    case 30: {
+    config.world = triangle_normal_interp_compare_scene();
+    config.aspect_ratio = 16.0 / 9.0;
+    config.image_width = 800;
+    config.samples_per_pixel = 10000;
+    config.background = color(0.65, 0.75, 0.9);
+
+    // Camera: straightforward front view, so differences are easy to see
+    config.lookfrom = point3(0.6, 1.75, 4.875);
+    config.lookat   = point3(0.6, 1.7, 0.0);
+    config.vfov = 30.0;
+    config.aperture = 0.0;
+    break;
+    }
+
+    case 31: {
+    config.world = pyramid_pointlight_compare_scene();
+    config.aspect_ratio = 16.0 / 9.0;
+    config.image_width = 900;
+    config.samples_per_pixel = 1500;   // 点光源 + 路径追踪会更噪，建议高一点
+    config.background = color(0.65, 0.75, 0.9);
+
+    // Camera: slightly above, looking at center between two pyramids
+    config.lookfrom = point3(0.0, 4.4, 14.0);
+    config.lookat   = point3(0.0, 1.4, 0.0);
+    config.vfov = 28.0;
+    config.aperture = 0.0;
+    break;
+    }
+
+
+
+    } 
 
     return config;
 }
+

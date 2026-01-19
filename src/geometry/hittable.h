@@ -56,7 +56,6 @@ inline bool translate::hit(const ray &r, double t_min, double t_max,
     }
 
     rec.p += offset;
-    rec.set_face_normal(moved_r, rec.normal);
 
     return true;
 }
@@ -150,32 +149,31 @@ inline bool rotate_y::hit(const ray &r, double t_min, double t_max,
     normal[2] = -sin_theta * rec.normal[0] + cos_theta * rec.normal[2];
 
     rec.p = p;
-    rec.set_face_normal(rotated_r, normal);
-
+    rec.set_face_normal(r, normal);
     return true;
 }
 
 class flip_face : public hittable {
   public:
-    flip_face(shared_ptr<hittable> p) : ptr(p) {
-    }
+    flip_face(shared_ptr<hittable> p) : ptr(p) {}
 
-    virtual bool hit(const ray &r, double t_min, double t_max,
-                     hit_record &rec) const override {
-        if (!ptr->hit(r, t_min, t_max, rec))
-            return false;
-
+    virtual bool hit(const ray& r, double t_min, double t_max,
+                     hit_record& rec) const override {
+        if (!ptr->hit(r, t_min, t_max, rec)) return false;
         rec.front_face = !rec.front_face;
+        rec.normal = -rec.normal;
         return true;
     }
 
     virtual bool bounding_box(double time0, double time1,
-                              aabb &output_box) const override {
+                              aabb& output_box) const override {
         return ptr->bounding_box(time0, time1, output_box);
     }
 
   public:
     shared_ptr<hittable> ptr;
 };
+
+
 
 #endif
