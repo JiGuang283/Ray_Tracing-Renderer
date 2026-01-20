@@ -20,135 +20,23 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.*/
 
-#include <chrono>
 #include <iomanip>
-#include <iostream>
 #include <memory>
-#include <sstream>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <thread>
+#include <filesystem>
 
-#include "WindowsApp.h"
-#include "direct_light_integrator.h"
-#include "mis_path_integrator.h"
-#include "path_integrator.h"
-#include "pbr_path_integrator.h"
-#include "render_buffer.h"
-#include "renderer.h"
-#include "rr_path_integrator.h"
-#include "scenes.h"
+#include "Application.h"
 
-namespace RenderConfig {
-constexpr int kMaxDepth = 50;
-constexpr double kTMin = 0.001;
-constexpr double kShutterOpen = 0.0;
-constexpr double kShutterClose = 1.0;
-} // namespace RenderConfig
 
 int main(int argc, char *args[]) {
-
-    int scene_id = 23;
-    int integrator_id = 4; // 0: Path, 1: RR, 2: PBR, 3: NEE, 4: MIS
-
+    int scene_id = -1;
     if (argc > 1) {
         scene_id = std::atoi(args[1]);
     }
-    if (argc > 2) {
-        integrator_id = std::atoi(args[2]);
-    }
-
-    SceneConfig config = select_scene(scene_id);
-
-    auto cam = make_shared<camera>(
-        config.lookfrom, config.lookat, config.vup, config.vfov,
-        config.aspect_ratio, config.aperture, config.focus_dist,
-        RenderConfig::kShutterOpen, RenderConfig::kShutterClose);
-
-    int width = config.image_width;
-    int height = static_cast<int>(width / config.aspect_ratio);
-    auto render_buffer = make_shared<RenderBuffer>(width, height);
-
-    auto integrator = make_shared<PathIntegrator>();
-    auto rrIntegrator = make_shared<RRPathInterator>();
-    auto pbrIntegrator = make_shared<PBRPathIntegrator>();
-    auto dirlightIntegrator = make_shared<DirectLightIntegrator>();
-    auto misIntegrator = make_shared<MISPathIntegrator>();
-
-    Renderer renderer;
-    renderer.set_samples(config.samples_per_pixel);
-
-    switch (integrator_id) {
-    case 0:
-        renderer.set_integrator(integrator);
-        break;
-    case 1:
-        renderer.set_integrator(rrIntegrator);
-        break;
-    case 2:
-        renderer.set_integrator(pbrIntegrator);
-        break;
-    case 3:
-        renderer.set_integrator(dirlightIntegrator);
-        break;
-    case 4:
-        renderer.set_integrator(misIntegrator);
-        break;
-    default:
-        renderer.set_integrator(misIntegrator);
-        break;
-    }
-
-    renderer.set_max_depth(50);
-
-    // Create window app handle
-    WindowsApp::ptr winApp =
-        WindowsApp::getInstance(width, height, "CGAssignment4: Ray Tracing");
-    if (winApp == nullptr) {
-        std::cerr << "Error: failed to create a window handler" << std::endl;
+    Application app(scene_id);
+    if (!app.init()) {
         return -1;
     }
-
-    std::thread renderingThread([&renderer, world = config.world, cam,
-                                 render_buffer, bg = config.background,
-                                 lights = config.lights]() {
-        renderer.render(world, cam, bg, *render_buffer, lights);
-    });
-
-    // Window app loop
-    while (!winApp->shouldWindowClose()) {
-        // Process event
-        winApp->processEvent();
-
-        // Display to the screen
-        winApp->updateScreenSurface(render_buffer->get_data());
-        std::this_thread::sleep_for(std::chrono::milliseconds(33));
-    }
-
-    renderer.cancel();
-
-    if (renderingThread.joinable()) {
-        renderingThread.join();
-    }
-
-    // 创建 output 文件夹（如果不存在）
-    mkdir("output", 0755);
-
-    // 生成带编号的文件名
-    auto now = std::chrono::system_clock::now();
-    auto timestamp = std::chrono::system_clock::to_time_t(now);
-    std::stringstream filename;
-    filename << "output/scene" << std::setfill('0') << std::setw(2) << scene_id
-             << "_integrator" << integrator_id << "_" << timestamp << ".png";
-
-    // 保存渲染结果到图片
-    std::cout << "Saving rendered image..." << std::endl;
-    std::string output_file = filename.str();
-    if (render_buffer->save_to_png(output_file)) {
-        std::cout << "Image saved successfully to " << output_file << std::endl;
-    } else {
-        std::cerr << "Failed to save image to " << output_file << std::endl;
-    }
+    app.run();
 
     return 0;
 }

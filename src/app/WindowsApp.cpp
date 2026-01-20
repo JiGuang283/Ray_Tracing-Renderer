@@ -1,20 +1,31 @@
 #include "WindowsApp.h"
+#include "imgui.h"
+#include "imgui_impl_sdl2.h"
+#include "imgui_impl_sdlrenderer2.h"
 
-#include <array>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 
 WindowsApp::ptr WindowsApp::m_instance = nullptr;
 
+WindowsApp::ptr WindowsApp::getInstance(int width, int height, const std::string &title) {
+    if (m_instance == nullptr) {
+        m_instance = std::shared_ptr<WindowsApp>(new WindowsApp());
+        if (!m_instance->setup(width, height, title)) {
+            m_instance = nullptr;
+        }
+    }
+    return m_instance;
+}
+
+WindowsApp::~WindowsApp() {
+    cleanup();
+}
+
 bool WindowsApp::setup(int width, int height, std::string title) {
     m_screen_width = width;
     m_screen_height = height;
-    m_window_title = title;
-
-    m_last_mouse_x = 0;
-    m_last_mouse_y = 0;
-    m_mouse_delta_x = 0;
-    m_mouse_delta_y = 0;
 
     // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -23,114 +34,152 @@ bool WindowsApp::setup(int width, int height, std::string title) {
         return false;
     }
 
-    // Create window
-    m_window_handle =
-        SDL_CreateWindow(m_window_title.c_str(), SDL_WINDOWPOS_UNDEFINED,
-                         SDL_WINDOWPOS_UNDEFINED, m_screen_width,
-                         m_screen_height, SDL_WINDOW_SHOWN);
+    // 创建窗口
+    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    m_window_handle = SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, window_flags);
+    // 创建窗口失败
+    if (!m_window_handle) {
+        return false;
+    }
+    // 设置缩放质量 (在创建纹理前设置)
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
 
-    if (m_window_handle == nullptr) {
-        std::cerr << "Window could not be created! SDL_Error: "
-                  << SDL_GetError() << std::endl;
+    // 创建 SDL_Renderer
+    // 优先尝试硬件加速，如果失败则尝试软件渲染 (增加 Windows 兼容性)
+    m_renderer = SDL_CreateRenderer(m_window_handle, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED);
+    if (!m_renderer) {
+        std::cerr << "Hardware accelerated renderer creation failed, trying software..." << std::endl;
+        m_renderer = SDL_CreateRenderer(m_window_handle, -1, SDL_RENDERER_SOFTWARE);
+    }
+    
+    if (!m_renderer) {
+        std::cerr << "SDL_Renderer could not be created! SDL_Error: " << SDL_GetError() << std::endl;
         return false;
     }
 
-    // Get window surface
-    m_screen_surface = SDL_GetWindowSurface(m_window_handle);
+    // 初始化 ImGui
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    ImGui::StyleColorsDark();
+
+    // 初始化 ImGui 后端 (SDL2 + SDL_Renderer2)
+    ImGui_ImplSDL2_InitForSDLRenderer(m_window_handle, m_renderer);
+    ImGui_ImplSDLRenderer2_Init(m_renderer);
+
+    // 创建用于显示光线追踪结果的 SDL 纹理
+    m_texture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, width, height);
+    if (!m_texture) {
+        std::cerr << "SDL_Texture could not be created! SDL_Error: " << SDL_GetError() << std::endl;
+        return false;
+    }
 
     return true;
 }
 
-WindowsApp::~WindowsApp() {
-    // Destroy window
-    SDL_DestroyWindow(m_window_handle);
-    m_window_handle = nullptr;
+void WindowsApp::recreateTexture(int width, int height) {
+    if (m_texture) {
+        SDL_DestroyTexture(m_texture);
+        m_texture = nullptr;
+    }
+    m_screen_width = width;
+    m_screen_height = height;
+    // 创建 RGBA8888 目标纹理
+    m_texture = SDL_CreateTexture(m_renderer,
+                                 SDL_PIXELFORMAT_RGBA32,
+                                 SDL_TEXTUREACCESS_STREAMING,
+                                 m_screen_width, m_screen_height);
+    // 设置缩放质量
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+}
 
-    // Quit SDL subsystems
-    SDL_Quit();
+void WindowsApp::setRenderSize(int width, int height) {
+    // 尺寸不同时才重建
+    if (width != m_screen_width || height != m_screen_height) {
+        recreateTexture(width, height);
+    }
 }
 
 void WindowsApp::processEvent() {
-    m_wheel_delta = 0;
-    // Handle events queue
-    while (SDL_PollEvent(&m_events) != 0) {
-        // Quit the program
-        if (m_events.type == SDL_QUIT ||
-            (m_events.type == SDL_KEYDOWN &&
-             m_events.key.keysym.sym == SDLK_ESCAPE)) {
+    while (SDL_PollEvent(&m_events)) {
+        ImGui_ImplSDL2_ProcessEvent(&m_events);
+        if (m_events.type == SDL_QUIT) {
             m_quit = true;
         }
-        if (m_events.type == SDL_MOUSEMOTION) {
-            static bool firstEvent = true;
-            if (firstEvent) {
-                firstEvent = false;
-                m_last_mouse_x = m_events.motion.x;
-                m_last_mouse_y = m_events.motion.y;
-                m_mouse_delta_x = 0;
-                m_mouse_delta_y = 0;
-            } else {
-                m_mouse_delta_x = m_events.motion.x - m_last_mouse_x;
-                m_mouse_delta_y = m_events.motion.y - m_last_mouse_y;
-                m_last_mouse_x = m_events.motion.x;
-                m_last_mouse_y = m_events.motion.y;
-            }
-        }
-        if (m_events.type == SDL_MOUSEBUTTONDOWN &&
-            m_events.button.button == SDL_BUTTON_LEFT) {
-            m_mouse_left_button_pressed = true;
-            m_last_mouse_x = m_events.motion.x;
-            m_last_mouse_y = m_events.motion.y;
-            m_mouse_delta_x = 0;
-            m_mouse_delta_y = 0;
-        }
-        if (m_events.type == SDL_MOUSEBUTTONUP &&
-            m_events.button.button == SDL_BUTTON_LEFT) {
-            m_mouse_left_button_pressed = false;
-        }
-        if (m_events.type == SDL_MOUSEWHEEL) {
-            m_wheel_delta = m_events.wheel.y;
+        if (m_events.type == SDL_WINDOWEVENT && m_events.window.event == SDL_WINDOWEVENT_CLOSE && m_events.window.windowID == SDL_GetWindowID(m_window_handle)) {
+            m_quit = true;
         }
     }
 }
 
-void WindowsApp::updateScreenSurface(
-    const std::vector<std::vector<color>> &canvas) {
-    // Update pixels
-    int height = canvas.size();
-    int width = canvas[0].size();
-    SDL_LockSurface(m_screen_surface);
-    {
-        Uint32 *destPixels = (Uint32 *)m_screen_surface->pixels;
-        for (int j = 0; j < height; ++j) {
-            for (int i = 0; i < width; ++i) {
-                const auto &pixel = canvas[j][i];
+void WindowsApp::updateTexture(const unsigned char *rgba) const {
+    auto t0 = Clock::now();
 
-                Uint32 color = SDL_MapRGB(m_screen_surface->format,
-                                          static_cast<uint8_t>(pixel[0] * 255),
-                                          static_cast<uint8_t>(pixel[1] * 255),
-                                          static_cast<uint8_t>(pixel[2] * 255));
-                destPixels[(height - 1 - j) * width + i] = color;
-            }
+    void* pixels = nullptr;
+    int pitch = 0;
+    if (SDL_LockTexture(m_texture, nullptr, &pixels, &pitch) == 0) {
+        // pitch 是每行字节数，逐行拷贝
+        const int row_bytes = m_screen_width * 4;
+        for (int y = 0; y < m_screen_height; ++y) {
+            std::memcpy(static_cast<unsigned char*>(pixels) + y * pitch,
+                        rgba + y * row_bytes,
+                        row_bytes);
         }
+        SDL_UnlockTexture(m_texture);
     }
-    SDL_UnlockSurface(m_screen_surface);
-    SDL_UpdateWindowSurface(m_window_handle);
+    auto t1 = Clock::now();
+    const_cast<WindowsApp*>(this)->m_timings.upload_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 }
 
-WindowsApp::ptr WindowsApp::getInstance() {
-    if (m_instance == nullptr) {
-        return getInstance(800, 600, "WinApp");
-    }
-    return m_instance;
+void WindowsApp::beginRender() {
+    // 开始新的一帧
+    ImGui_ImplSDLRenderer2_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
 }
 
-WindowsApp::ptr WindowsApp::getInstance(int width, int height,
-                                        const std::string title) {
-    if (m_instance == nullptr) {
-        m_instance = std::shared_ptr<WindowsApp>(new WindowsApp());
-        if (!m_instance->setup(width, height, title)) {
-            return nullptr;
-        }
-    }
-    return m_instance;
+void WindowsApp::endRender() const {
+    auto t0 = Clock::now();
+
+    // ImGui 准备渲染数据
+    ImGui::Render();
+    // 清除屏幕（黑色背景）
+    SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
+    SDL_RenderClear(m_renderer);
+
+    // 将 ImGui 的内容画在最上层（渲染结果纹理由 ImGui::Image 绘制，避免重复 RenderCopy）
+    ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), m_renderer);
+    // 交换缓冲区显示
+    SDL_RenderPresent(m_renderer);
+
+    auto t1 = Clock::now();
+    const_cast<WindowsApp*>(this)->m_timings.render_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 }
+
+void WindowsApp::cleanup() const {
+    ImGui_ImplSDLRenderer2_Shutdown();
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
+
+    if (m_texture) {
+        SDL_DestroyTexture(m_texture);
+    }
+    if (m_renderer) {
+        SDL_DestroyRenderer(m_renderer);
+    }
+    if (m_window_handle) {
+        SDL_DestroyWindow(m_window_handle);
+    }
+    SDL_Quit();
+}
+
+void WindowsApp::markCpuStart() {
+    m_cpu_start = Clock::now();
+}
+void WindowsApp::markCpuEnd() {
+    auto t1 = Clock::now();
+    m_timings.cpu_ms = std::chrono::duration<double, std::milli>(t1 - m_cpu_start).count();
+}
+
